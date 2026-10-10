@@ -9,6 +9,8 @@
 - 真实 Linux VS Code `1.95.3`：11 组断言通过，包括单个 workspace 扩展的本地执行、语言菜单、无效 JSON 设置下的语言切换、IP 缓存、工作区覆盖下的位置切换、额度与错误状态、忽略旧远程路径，以及官方 npm CLI `0.162.1` 在隔离未登录目录中的启动。
 - 最终 VSIX：11 个文件，清单版本与 `extensionKind: ["workspace"]`、机器级路径设置、无内置第二扩展及实际入口字节均已校验。只安装该 VSIX 后，真实 Linux VS Code 宿主的 11 组断言全部通过。
 
+- [Windows／Linux CI 第 26 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38065067932)：通过。Windows 54 项单元测试全部通过，Linux 53 项通过并跳过 Windows 专用项；两个平台均通过 19 项打包入口测试、官方 CLI 原生检查、11 组真实 VS Code 宿主断言及单包打包。
+
 实际 SSH／WSL／容器连接尚未实机验收；模拟宿主测试使用真实协议子进程和独立虚构账号，不能替代真实远程安装验收。公网 IP 测试使用模拟 HTTPS 响应；真实订阅账号与该服务真实联网的验证限制沿用 0.1.6。VS Code 原生安装／升级是否提示重新加载由 VS Code 决定，插件不会主动发出重载或自动安装组件。
 
 ## 0.1.8
