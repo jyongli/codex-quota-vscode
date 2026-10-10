@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { queryCodex, resolveCli } from '../src/cli';
 import { cleanup, fixtureCli, readTrace, scenarioHome } from './helpers';
 import { quotaText } from '../src/quota';
@@ -110,7 +110,7 @@ test('Windows 官方 npm shim 和 JS 入口直接解析到原生程序：x64／A
           await mkdir(path.dirname(native), { recursive: true });
           await writeFile(native, '');
           for (const command of ['codex', entry]) {
-            assert.deepEqual(await resolveCli(command, { PATH: home }, 'win32', arch), { executable: native, args: [] });
+            assert.deepEqual(await resolveCli(command, { PATH: home }, 'win32', arch), { executable: await realpath(native), args: [] });
           }
         });
       }
@@ -134,7 +134,7 @@ test('Windows 直接配置 codex.exe 和非官方 JS 入口仍可使用', async 
   await withScenario({}, async home => {
     const native = path.join(home, 'codex.exe');
     await writeFile(native, '');
-    assert.deepEqual(await resolveCli(native, {}, 'win32'), { executable: native, args: [] });
+    assert.deepEqual(await resolveCli(native, {}, 'win32'), { executable: await realpath(native), args: [] });
     assert.deepEqual(await resolveCli(fixtureCli, {}, 'win32'), { executable: process.execPath, args: [fixtureCli] });
   });
 });

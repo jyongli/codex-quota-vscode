@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -11,7 +11,7 @@ try {
   });
   assert.equal(snapshot.account.type, 'signedOut');
   assert.equal(snapshot.quota, undefined);
-  assert.equal(snapshot.codexHome, testHome);
+  assert.equal(await realpath(snapshot.codexHome), await realpath(testHome));
   console.log('PASS: native Codex CLI initialize/account/read and unsigned-in state (isolated configuration, no credentials)');
 } finally {
   await rm(testHome, { recursive: true, force: true });

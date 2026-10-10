@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { queryCodex } from '../src/cli';
@@ -19,7 +19,7 @@ test('Windows 原生查询进程不分配命令行窗口，仍可进行真实管
     ], { windowsHide: true, timeout: 20_000 });
     const snapshot = await queryCodex({ cliPath: executable, codexHome: home, timeoutMs: 5000 });
     assert.equal(snapshot.account.type, 'signedOut');
-    assert.equal(snapshot.cliPath, executable);
+    assert.equal(snapshot.cliPath, await realpath(executable));
     assert.equal(snapshot.codexHome, home);
   } finally { await cleanup(home); }
 });
