@@ -3,6 +3,11 @@ name: Publish GitHub Release
 on:
   push:
     tags: ['v*']
+    branches: [main]
+    paths:
+      - 'releases/**'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,15 +17,23 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      RELEASE_TAG: ${{ github.ref_name }}
-      RELEASE_DIR: releases/${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - name: Select release version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            release_tag="$GITHUB_REF_NAME"
+          else
+            release_tag="v$(node -p "require('./package.json').version")"
+          fi
+          git rev-parse --verify "refs/tags/$release_tag"
+          printf '%s\n' "RELEASE_TAG=$release_tag" "RELEASE_DIR=releases/$release_tag" >> "$GITHUB_ENV"
       - run: npm ci
       - run: npm test
       - run: npm run test:bundle
@@ -33,6 +46,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists."
+            exit 0
+          fi
           gh release create "$RELEASE_TAG" \
             "$RELEASE_DIR"/*.vsix "$RELEASE_DIR"/*.sha256 \
             --repo "$GITHUB_REPOSITORY" \

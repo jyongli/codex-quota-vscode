@@ -135,6 +135,6 @@ xvfb-run -a npm run test:vscode
 
 打包结果位于 `artifacts/codex-quota-vscode-0.1.0.vsix`。只包含运行入口、清单、README、变更记录和许可证；没有运行时 npm 依赖，不包含测试、开发依赖或凭据。打包命令只生成本地文件，不推送或发布。
 
-发布到 GitHub 使用 `.github/workflows/release.yml`：推送 `v*` 标签后完成测试、校验 `releases/<标签>` 中已验证的 VSIX，并创建附带安装包与 SHA256 的 Release。该工作流需要仓库启用 GitHub Actions；写权限仅赋予发布任务。
+发布到 GitHub 使用 `.github/workflows/release.yml`：推送 `v*` 标签，或在 `main` 更新发布目录／发布工作流后，完成测试、校验 `releases/<标签>` 中已验证的 VSIX，并创建附带安装包与 SHA256 的 Release。主分支及手动运行根据 `package.json` 版本选择已有标签；已有 Release 不重复创建。该工作流需要仓库启用 GitHub Actions；写权限仅赋予发布任务。
 
 本次验证的具体结果与实测范围见仓库开发文档 `TESTING.md`（不包含在 VSIX 内）。
