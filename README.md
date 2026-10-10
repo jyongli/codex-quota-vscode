@@ -13,16 +13,16 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 
 要求桌面 VS Code 1.95+。在要查询的机器安装官方 [Codex CLI](https://github.com/openai/codex)，建议 0.116.0+，并用 ChatGPT 账号执行 `codex login`。
 
-从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.4**。主插件安装在本地；需要远程查询时，在远程端一次性安装同版本的查询组件。安装包也保存在 [releases/v0.1.4](releases/v0.1.4) 中：
+从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.5**。主插件安装在本地；需要远程查询时，在远程端一次性安装同版本的查询组件。安装包也保存在 [releases/v0.1.5](releases/v0.1.5) 中：
 
-- [本地主插件 codex-quota-vscode-0.1.4.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.4/codex-quota-vscode-0.1.4.vsix)
-- [远程查询组件 codex-quota-remote-0.1.4.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.4/codex-quota-remote-0.1.4.vsix)
-- [主插件 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.4/codex-quota-vscode-0.1.4.vsix.sha256)／[远程组件 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.4/codex-quota-remote-0.1.4.vsix.sha256)
+- [本地主插件 codex-quota-vscode-0.1.5.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.5/codex-quota-vscode-0.1.5.vsix)
+- [远程查询组件 codex-quota-remote-0.1.5.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.5/codex-quota-remote-0.1.5.vsix)
+- [主插件 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.5/codex-quota-vscode-0.1.5.vsix.sha256)／[远程组件 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.5/codex-quota-remote-0.1.5.vsix.sha256)
 
 从 VS Code 扩展视图的“…”菜单选择 **Install from VSIX / 从 VSIX 安装**。本地安装也可执行：
 
 ```sh
-code --install-extension codex-quota-vscode-0.1.4.vsix
+code --install-extension codex-quota-vscode-0.1.5.vsix
 ```
 
 插件默认在本地执行。CLI 不在 VS Code 进程的 PATH 中时，在用户设置中指定 `codexQuota.cliPath` 的绝对路径；图形界面启动的 VS Code 不一定继承终端的 PATH。
@@ -42,9 +42,9 @@ code --install-extension codex-quota-vscode-0.1.4.vsix
 主插件负责本机查询和状态栏，固定在本地运行；**Codex Quota Remote** 在远程工作区宿主运行，读取远程机器的 CLI 与账号。两端通过 VS Code 命令通道传递查询结果和取消请求，切换环境只改变查询路由，无须迁移扩展宿主。支持 Remote SSH、WSL、Dev Containers 和桌面 Codespaces。
 
 1. 本地查询使用本机的 Codex CLI、环境变量、配置目录和系统凭据存储。
-2. 连接远程工作区，通过“从 VSIX 安装”在**远程端**安装 `codex-quota-remote-0.1.4.vsix`，并在那里安装和登录 Codex CLI。在扩展视图的远程分组确认 **Codex Quota Remote** 已安装；主插件 **Codex Quota** 安装在本地。
+2. 连接远程工作区，通过“从 VSIX 安装”在**远程端**安装 `codex-quota-remote-0.1.5.vsix`，并在那里安装和登录 Codex CLI。在扩展视图的远程分组确认 **Codex Quota Remote** 已安装；主插件 **Codex Quota** 安装在本地。
 3. 执行“选择本地／远程环境”，选择目标端，立即重新查询。切换时取消旧请求并清除旧额度，晚到的结果不会覆盖新环境的账号。
-4. 通过状态栏的 `[本地]`／`[远程]` 和悬浮提示中的 IP 地址确认所查询的宿主；“查看账号与额度来源”展示账号来源与路径。远程端的 CLI 路径与配置目录通过 VS Code 的远程用户设置配置。
+4. 通过状态栏的 `[本地]`／`[远程]` 和悬浮提示中的 IP 地址确认所查询的宿主；“查看账号与额度来源”展示账号来源与路径。远程端的 CLI 路径与配置目录分别使用 `codexQuota.remoteCliPath`、`codexQuota.remoteCodexHome`，通过 VS Code 的远程用户设置配置。
 
 环境选择使用 `codexQuota.executionEnvironment` 设置，例如：
 
@@ -79,7 +79,7 @@ code --install-extension codex-quota-vscode-0.1.4.vsix
 - [官方额度协议类型](https://github.com/openai/codex/blob/rust-v0.116.0/codex-rs/app-server-protocol/src/protocol/v2.rs)
 - [VS Code 远程扩展：执行位置与 extensionKind](https://code.visualstudio.com/api/advanced-topics/remote-extensions#incorrect-execution-location)
 
-**账号来源**是所选宿主的 Codex CLI 当前有效认证。配置目录优先使用 `codexQuota.codexHome`，其次继承该宿主 `CODEX_HOME`，默认 `~/.codex`；新版本以 `initialize` 返回的实际 `codexHome` 为准。凭据可能由 Codex 保存在此目录或系统凭据存储中。插件不读取 `auth.json`、不解码 JWT、不自行处理登录或发送 token。账号不是 VS Code 的 GitHub 登录，也不承诺与其他扩展显示的账号相同。
+**账号来源**是所选宿主的 Codex CLI 当前有效认证。本地配置目录使用 `codexQuota.codexHome`，远程配置目录使用 `codexQuota.remoteCodexHome`；留空时继承相应宿主的 `CODEX_HOME`，默认 `~/.codex`；新版本以 `initialize` 返回的实际 `codexHome` 为准。凭据可能由 Codex 保存在此目录或系统凭据存储中。插件不读取 `auth.json`、不解码 JWT、不自行处理登录或发送 token。账号不是 VS Code 的 GitHub 登录，也不承诺与其他扩展显示的账号相同。
 
 API Key、Amazon Bedrock 和未登录状态会分别标明，不伪造 ChatGPT 订阅额度。API Key 使用的 API 计费额度不等同于 ChatGPT Codex 的 5 小时／周额度。
 
@@ -105,12 +105,14 @@ CLI 用参数数组在后台启动，`shell: false`、`windowsHide: true`，通�
 | --- | --- | --- |
 | `codexQuota.executionEnvironment` | `local` | `local` / `remote`，即时切换；远程端需安装查询组件 |
 | `codexQuota.statusBarPosition` | `right` | `left` / `right`，即时生效 |
-| `codexQuota.cliPath` | `codex` | 当前执行宿主的 CLI 路径；机器级用户设置 |
-| `codexQuota.codexHome` | 空 | 继承宿主配置；支持绝对路径和 `~/` |
+| `codexQuota.cliPath` | `codex` | 本机 CLI 路径；本地用户设置，远程设置不能覆盖 |
+| `codexQuota.codexHome` | 空 | 本机配置目录；继承本机配置，支持绝对路径和 `~/` |
+| `codexQuota.remoteCliPath` | `codex` | 远程 CLI 路径；在远程用户设置配置 |
+| `codexQuota.remoteCodexHome` | 空 | 远程配置目录；继承远程配置，支持绝对路径和 `~/` |
 | `codexQuota.refreshIntervalSeconds` | `300` | 自动刷新间隔，60–3600 秒 |
 | `codexQuota.requestTimeoutSeconds` | `60` | 整个查询的超时，5–120 秒；错误标明失败阶段 |
 
-CLI 路径和 Codex 配置目录采用机器级配置，不接受工作区覆盖。工作区需要受到信任才能执行 CLI。插件不增加遥测、不上传账号信息；Codex 自身的网络和遥测遵循其官方配置。上游原始错误和 stderr 不写入插件 UI，避免意外暴露凭据。
+本地 CLI 路径和配置目录采用 application 范围，只从本地用户设置读取；远程路径和目录采用独立的机器级设置，不接受工作区覆盖。VS Code 会向两个宿主提供合并后的配置，因此两端使用不同的设置键，避免读取另一端的路径。升级时如有旧的自定义远程路径，请将远程用户设置中的 `codexQuota.cliPath`、`codexQuota.codexHome` 改为 `codexQuota.remoteCliPath`、`codexQuota.remoteCodexHome`；本地原有设置保留。工作区需要受到信任才能执行 CLI。插件不增加遥测、不上传账号信息；Codex 自身的网络和遥测遵循其官方配置。上游原始错误和 stderr 不写入插件 UI，避免意外暴露凭据。
 
 ## 开发、测试与打包
 

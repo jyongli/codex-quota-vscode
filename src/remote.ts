@@ -12,7 +12,10 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!vscode.workspace.isTrusted || (!!vscode.env.remoteName && context.extension.extensionKind !== vscode.ExtensionKind.Workspace)) {
       return { ...origin, ok: false, message: '远程查询组件需要在受信任的工作区宿主运行。' };
     }
-    if (!request || !/^[a-f0-9-]{36}$/i.test(request.requestId) || requests.has(request.requestId)) {
+    if (!request || request.protocol !== REMOTE_PROTOCOL) {
+      return { ...origin, ok: false, message: '远程查询协议版本不兼容；请安装相同版本的主插件和远程查询组件。' };
+    }
+    if (!/^[a-f0-9-]{36}$/i.test(request.requestId) || requests.has(request.requestId)) {
       return { ...origin, ok: false, message: '远程查询请求无效。' };
     }
     const controller = new AbortController();
@@ -20,7 +23,7 @@ export function activate(context: vscode.ExtensionContext): void {
     try {
       const config = vscode.workspace.getConfiguration('codexQuota');
       const snapshot = await queryCodex({
-        cliPath: config.get('cliPath', 'codex'), codexHome: config.get('codexHome', ''),
+        cliPath: config.get('remoteCliPath', 'codex'), codexHome: config.get('remoteCodexHome', ''),
         timeoutMs: Math.max(5000, Math.min(120000, Number(request.timeoutMs) || 60000))
       }, controller.signal);
       return { ...origin, ok: true, snapshot: { ...snapshot, checkedAt: snapshot.checkedAt.toISOString() } };

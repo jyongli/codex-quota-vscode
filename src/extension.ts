@@ -68,7 +68,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
         this.createBar();
         this.render();
       }
-      if (['executionEnvironment', 'cliPath', 'codexHome', 'refreshIntervalSeconds', 'requestTimeoutSeconds'].some(key => event.affectsConfiguration(`codexQuota.${key}`))) {
+      if (['executionEnvironment', 'cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'refreshIntervalSeconds', 'requestTimeoutSeconds'].some(key => event.affectsConfiguration(`codexQuota.${key}`))) {
         this.invalidate();
         this.startPolling();
       }

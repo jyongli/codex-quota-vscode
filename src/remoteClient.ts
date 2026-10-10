@@ -22,7 +22,7 @@ export function queryRemote(send: CommandSender, remoteName: string, timeoutMs: 
     }, timeoutMs + 1000);
     signal.addEventListener('abort', abort, { once: true });
     if (signal.aborted) { abort(); return; }
-    void Promise.resolve().then(() => send(REMOTE_QUERY, { requestId, timeoutMs })).then(value => {
+    void Promise.resolve().then(() => send(REMOTE_QUERY, { protocol: REMOTE_PROTOCOL, requestId, timeoutMs })).then(value => {
       if (settled) return;
       const reply = value as RemoteReply | undefined;
       if (!reply || reply.protocol !== REMOTE_PROTOCOL) {

@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 export async function run(): Promise<void> {
   const home = await mkdtemp(path.join(tmpdir(), 'codex-quota-vscode-'));
   const config = vscode.workspace.getConfiguration('codexQuota');
-  const previous = Object.fromEntries(['cliPath', 'codexHome', 'statusBarPosition', 'executionEnvironment'].map(key => [key, config.inspect(key)?.globalValue]));
+  const previous = Object.fromEntries(['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'statusBarPosition', 'executionEnvironment'].map(key => [key, config.inspect(key)?.globalValue]));
   try {
     await writeFile(path.join(home, 'scenario.json'), '{}');
     await config.update('cliPath', path.resolve(__dirname, '../../../test/fixtures/codex.cjs'), vscode.ConfigurationTarget.Global);
@@ -51,19 +51,30 @@ export async function run(): Promise<void> {
     assert.ok(!api.getState().tooltip.includes('SENSITIVE_MOCK_TOKEN'));
     await vscode.commands.executeCommand('codexQuota.showDiagnostics');
     console.log('PASS: startup failure diagnostics and output command in the real VS Code host');
-    await writeFile(path.join(home, 'scenario.json'), JSON.stringify({ account: { type: 'chatgpt', email: 'provider@example.test', planType: 'pro' } }));
+    const remoteHome = path.join(home, 'remote account');
+    await mkdir(remoteHome);
+    await writeFile(path.join(remoteHome, 'scenario.json'), JSON.stringify({ account: { type: 'chatgpt', email: 'provider@example.test', planType: 'pro' } }));
+    await config.update('remoteCliPath', path.resolve(__dirname, '../../../test/fixtures/codex.cjs'), vscode.ConfigurationTarget.Global);
+    await config.update('remoteCodexHome', remoteHome, vscode.ConfigurationTarget.Global);
     assert.ok(vscode.extensions.getExtension('jyongli.codex-quota-remote'), 'remote companion must be discovered');
-    const reply = await vscode.commands.executeCommand<RemoteReply>(REMOTE_QUERY, { requestId: randomUUID(), timeoutMs: 5000 });
+    const oldReply = await vscode.commands.executeCommand<RemoteReply>(REMOTE_QUERY, { protocol: 1, requestId: randomUUID(), timeoutMs: 5000 });
+    assert.equal(oldReply.ok, false, 'old clients must not query using the changed settings contract');
+    const reply = await vscode.commands.executeCommand<RemoteReply>(REMOTE_QUERY, { protocol: REMOTE_PROTOCOL, requestId: randomUUID(), timeoutMs: 5000 });
     assert.equal(reply.protocol, REMOTE_PROTOCOL);
     assert.equal(reply.ok, true, reply.ok ? '' : reply.message);
     assert.equal(reply.remoteName, vscode.env.remoteName ?? null);
     assert.ok(reply.hostIp);
     if (reply.ok) {
       assert.equal(reply.snapshot.account.type, 'chatgpt');
-      assert.equal(reply.snapshot.codexHome, home);
+      assert.equal(reply.snapshot.codexHome, remoteHome);
+      assert.deepEqual(reply.snapshot.account, { type: 'chatgpt', email: 'provider@example.test', planType: 'pro' });
       assert.equal(typeof reply.snapshot.checkedAt, 'string');
     }
-    console.log('PASS: paired extensions activate and exchange a serialized query through VS Code commands');
+    await writeFile(path.join(home, 'scenario.json'), '{}');
+    await vscode.commands.executeCommand('codexQuota.refresh');
+    assert.match(api.getState().tooltip, /fixture@example.test/);
+    assert.equal(api.getState().snapshot?.codexHome, home);
+    console.log('PASS: paired extensions exchange serialized queries and isolate accounts despite shared configuration');
     if (process.env.CODEX_QUOTA_NATIVE_CLI) {
       const nativeHome = path.join(home, 'native home 中文 with spaces');
       await mkdir(nativeHome);

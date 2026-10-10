@@ -15,7 +15,7 @@ test('远程协议传回远程路径、IP 和日期，拒绝其他宿主或不�
   assert.equal(snapshot.codexHome, '/remote/.codex');
   assert.ok(snapshot.checkedAt instanceof Date);
   await assert.rejects(queryRemote(async () => ({ ...response(), remoteName: null }), 'ssh-remote', 5000, controller.signal), /当前远程宿主/);
-  await assert.rejects(queryRemote(async () => ({ ...response(), protocol: 0 }), 'ssh-remote', 5000, controller.signal), /版本不兼容/);
+  await assert.rejects(queryRemote(async () => ({ ...response(), protocol: 1 }), 'ssh-remote', 5000, controller.signal), /版本不兼容/);
   await assert.rejects(queryRemote(async () => undefined, 'ssh-remote', 5000, controller.signal), /未安装/);
 });
 

@@ -92,12 +92,12 @@ moduleLoader._load = function(request, parent, isMain) {
 };
 const extensionModule = process.env.CODEX_QUOTA_TEST_BUNDLE ? '../../dist/extension.js' : '../src/extension';
 const { activate } = require(extensionModule) as typeof import('../src/extension');
-let remoteSettings: Record<string, unknown> = {};
 const remoteMock = {
   env, ExtensionKind: mock.ExtensionKind,
   workspace: {
     get isTrusted() { return workspace.isTrusted; },
-    getConfiguration() { return { get(key: string, fallback?: unknown) { return remoteSettings[key] ?? fallback; } }; }
+    // VS Code supplies the same merged configuration to both extension hosts.
+    getConfiguration() { return workspace.getConfiguration('codexQuota'); }
   },
   commands: {
     registerCommand(name: string, action: (...args: unknown[]) => unknown) {
@@ -139,7 +139,8 @@ async function harness(scenario: unknown, options: {
   const remoteSubscriptions: VSCode.Disposable[] = [];
   const remoteHome = options.provider ? await scenarioHome(options.remoteScenario ?? { account: { type: 'chatgpt', email: 'remote@example.test', planType: 'pro' } }) : undefined;
   if (remoteHome) {
-    remoteSettings = { cliPath: fixtureCli, codexHome: remoteHome };
+    state.settings.remoteCliPath = fixtureCli;
+    state.settings.remoteCodexHome = remoteHome;
     activateRemote({ extension: { extensionKind: options.providerUi ? 1 : 2 }, subscriptions: remoteSubscriptions } as unknown as VSCode.ExtensionContext);
   }
   const api = await activate({

@@ -2,7 +2,7 @@
   "name": "codex-quota-vscode",
   "displayName": "Codex Quota",
   "description": "查看所选本地或远程 Codex CLI 账号的 5 小时与周剩余额度。",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "jyongli",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/jyongli/codex-quota-vscode.git" },
@@ -37,12 +37,20 @@
           "description": "状态栏位置；更改后立即生效。"
         },
         "codexQuota.cliPath": {
-          "type": "string", "default": "codex", "scope": "machine",
-          "description": "当前执行宿主上的 Codex 可执行文件路径（或官方 npm CLI 的 .js 入口）；不接受 shell 命令。"
+          "type": "string", "default": "codex", "scope": "application",
+          "description": "本机 Codex 可执行文件路径（或官方 npm CLI 的 .js 入口）；在本地用户设置配置，不接受 shell 命令。"
         },
         "codexQuota.codexHome": {
+          "type": "string", "default": "", "scope": "application",
+          "description": "本机 Codex 配置目录，留空继承本机 CODEX_HOME，否则使用 ~/.codex。支持 ~/。插件不读取凭据文件。"
+        },
+        "codexQuota.remoteCliPath": {
+          "type": "string", "default": "codex", "scope": "machine",
+          "description": "远程宿主的 Codex CLI 路径；在远程用户设置配置，不接受 shell 命令。"
+        },
+        "codexQuota.remoteCodexHome": {
           "type": "string", "default": "", "scope": "machine",
-          "description": "当前宿主的 Codex 配置目录，留空继承 CODEX_HOME，否则使用 ~/.codex。支持 ~/。插件不读取凭据文件。"
+          "description": "远程宿主的 Codex 配置目录，留空继承远程 CODEX_HOME，否则使用远程 ~/.codex。支持 ~/。"
         },
         "codexQuota.refreshIntervalSeconds": {
           "type": "integer", "default": 300, "minimum": 60, "maximum": 3600, "scope": "window",

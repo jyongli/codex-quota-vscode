@@ -2,7 +2,7 @@
   "name": "codex-quota-remote",
   "displayName": "Codex Quota Remote",
   "description": "Codex Quota 的远程查询组件；在工作区宿主读取所在机器的 Codex CLI 账号与额度。",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "jyongli",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/jyongli/codex-quota-vscode.git" },
