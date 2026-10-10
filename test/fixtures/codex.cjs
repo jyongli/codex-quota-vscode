@@ -24,7 +24,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   const request = JSON.parse(line);
   fs.appendFileSync(trace, JSON.stringify(request) + '\n');
   if (request.method === 'initialized') { initialized = true; return; }
-  if (scenario.hang) return;
+  if (scenario.hang || scenario.hangMethod === request.method) return;
   if (scenario.exit) { process.exit(4); }
   if (scenario.malformed) { process.stdout.write('not-json\n'); return; }
   if (scenario.huge) { process.stdout.write('x'.repeat(2_000_000)); return; }

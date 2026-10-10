@@ -1,8 +1,10 @@
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
-import { access, mkdir, realpath } from 'node:fs/promises';
+import { access, mkdir, readFile, realpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
+import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { version } from '../package.json';
 import { Account, Quota, parseAccount, parseQuota, record } from './quota';
 
 export interface QueryOptions {
@@ -25,7 +27,35 @@ export function expandHome(value: string): string {
   return value.startsWith('~/') || value.startsWith('~\\') ? path.join(homedir(), value.slice(2)) : value;
 }
 
-export async function resolveCli(command: string, env: NodeJS.ProcessEnv = process.env, platform = process.platform): Promise<{ executable: string; args: string[] }> {
+async function windowsCodexExecutable(entry: string, arch: string): Promise<string | undefined> {
+  if (path.basename(entry).toLowerCase() !== 'codex.js' || path.basename(path.dirname(entry)) !== 'bin') return undefined;
+  const packageRoot = path.dirname(path.dirname(entry));
+  let manifest: unknown;
+  try { manifest = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8')); } catch { return undefined; }
+  if (!record(manifest) || manifest.name !== '@openai/codex') return undefined;
+
+  const target = arch === 'x64' ? 'x86_64-pc-windows-msvc' : arch === 'arm64' ? 'aarch64-pc-windows-msvc' : undefined;
+  if (!target) throw new Error('当前 Windows 架构不受 Codex CLI 支持。请设置原生 codex.exe 路径。');
+  const vendorRoots: string[] = [];
+  try {
+    const platformManifest = createRequire(entry).resolve(`@openai/codex-win32-${arch}/package.json`);
+    vendorRoots.push(path.join(path.dirname(platformManifest), 'vendor'));
+  } catch { /* Older official packages keep vendor inside @openai/codex. */ }
+  vendorRoots.push(path.join(packageRoot, 'vendor'));
+  for (const vendorRoot of vendorRoots) {
+    for (const directory of ['bin', 'codex']) {
+      const executable = path.join(vendorRoot, target, directory, 'codex.exe');
+      try {
+        await access(executable);
+        return await realpath(executable);
+      } catch { /* Try the next official package layout. */ }
+    }
+  }
+  // Running the JS wrapper would spawn another console process without windowsHide.
+  throw new Error('官方 Codex npm 包缺少 Windows 原生程序。请重新安装 @openai/codex，或将 cliPath 设为 codex.exe 的绝对路径。');
+}
+
+export async function resolveCli(command: string, env: NodeJS.ProcessEnv = process.env, platform = process.platform, arch = process.arch): Promise<{ executable: string; args: string[] }> {
   const expanded = expandHome(command.trim());
   if (!expanded) throw new Error('请设置 Codex CLI 路径。');
   const windows = platform === 'win32';
@@ -52,7 +82,11 @@ export async function resolveCli(command: string, env: NodeJS.ProcessEnv = proce
     try { await access(entry); } catch {
       throw new Error('不执行 shell 包装脚本。请将 cliPath 设为 codex.exe 或官方 npm 包的 bin/codex.js。');
     }
-    found = entry;
+    found = await realpath(entry);
+  }
+  if (windows) {
+    const native = await windowsCodexExecutable(found, arch);
+    if (native) return { executable: native, args: [] };
   }
   return /\.[cm]?js$/i.test(found)
     ? { executable: process.execPath, args: [found] }
@@ -82,7 +116,7 @@ class RpcClient {
       this.closed = true;
       this.fail(new Error('Codex app-server 提前退出，请更新 CLI 或检查配置。'));
     });
-    this.abortListener = () => this.fail(new Error('额度查询已取消或超时。'));
+    this.abortListener = () => this.fail(signal.reason instanceof Error ? signal.reason : new Error('额度查询已取消。'));
     signal.addEventListener('abort', this.abortListener, { once: true });
     if (signal.aborted) this.abortListener();
   }
@@ -151,36 +185,44 @@ class RpcClient {
 
 export async function queryCodex(options: QueryOptions, signal?: AbortSignal): Promise<Snapshot> {
   const controller = new AbortController();
-  const abort = () => controller.abort();
+  let stage = '查找 CLI';
+  const abort = () => controller.abort(new Error('额度查询已取消。'));
   signal?.addEventListener('abort', abort, { once: true });
-  if (signal?.aborted) controller.abort();
-  const timer = setTimeout(abort, options.timeoutMs);
+  if (signal?.aborted) abort();
+  const timer = setTimeout(() => controller.abort(new Error(
+    `Codex ${stage}超时（${options.timeoutMs / 1000} 秒）。请检查 CLI 登录状态、配置目录写权限及网络，或增加 codexQuota.requestTimeoutSeconds。`
+  )), options.timeoutMs);
   let client: RpcClient | undefined;
   try {
     const command = await resolveCli(options.cliPath);
-    if (controller.signal.aborted) throw new Error('额度查询已取消或超时。');
+    if (controller.signal.aborted) throw controller.signal.reason;
     const configuredHome = expandHome(options.codexHome.trim());
     if (configuredHome && !path.isAbsolute(configuredHome)) throw new Error('codexHome 必须是绝对路径或 ~/ 路径。');
     const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1', ...(configuredHome ? { CODEX_HOME: configuredHome } : {}) };
     const appServerArgs: string[] = [];
     if (options.runtimeDirectory) {
+      stage = '准备辅助数据目录';
       if (!path.isAbsolute(options.runtimeDirectory)) throw new Error('CLI 辅助数据目录必须是绝对路径。');
       await mkdir(options.runtimeDirectory, { recursive: true, mode: 0o700 });
       // Isolate the helper's database/logs while preserving the existing auth home.
       appServerArgs.push('-c', `sqlite_home=${JSON.stringify(options.runtimeDirectory)}`,
         '-c', `log_dir=${JSON.stringify(options.runtimeDirectory)}`);
     }
-    if (controller.signal.aborted) throw new Error('额度查询已取消或超时。');
+    if (controller.signal.aborted) throw controller.signal.reason;
+    stage = '启动并初始化 CLI';
     client = new RpcClient(command.executable, command.args, appServerArgs, env, controller.signal);
     const initialized = await client.request('initialize', {
-      clientInfo: { name: 'codex_quota_vscode', title: 'Codex Quota', version: '0.1.0' },
+      clientInfo: { name: 'codex_quota_vscode', title: 'Codex Quota', version },
       capabilities: { experimentalApi: false }
     });
     client.initialized();
+    stage = '读取账号';
     const account = parseAccount(await client.request('account/read', { refreshToken: false }));
+    stage = '读取额度';
     const quota = account.type === 'chatgpt' ? parseQuota(await client.request('account/rateLimits/read')) : undefined;
     // Reject mixed-account snapshots if the account changes during the quota request.
     if (quota) {
+      stage = '确认账号';
       const after = parseAccount(await client.request('account/read', { refreshToken: false }));
       if (JSON.stringify(after) !== JSON.stringify(account)) throw new Error('查询期间账号发生变化，请重新刷新。');
     }

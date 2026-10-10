@@ -122,7 +122,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     this.abort = abort;
     this.loading = true;
     this.render();
-    const timeout = Math.max(5, Math.min(120, Number(this.config().get('requestTimeoutSeconds', 20)) || 20));
+    const timeout = Math.max(5, Math.min(120, Number(this.config().get('requestTimeoutSeconds', 60)) || 60));
     const job = (async () => {
       try {
         const snapshot = await queryCodex({

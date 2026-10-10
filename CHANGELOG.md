@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- 修复 Windows npm 版 Codex CLI 查询额度时弹出命令行窗口：直接以隐藏窗口的后台进程启动官方原生 `codex.exe`，避免 JavaScript 包装器二次启动窗口。
+- 支持 Windows x64／ARM64 的官方平台依赖与旧版内置 vendor 布局；原生程序缺失时提示修复安装。
+- 默认查询超时调整为 60 秒；超时信息显示具体阶段，取消请求与超时分别处理，结束后回收辅助进程。
+
 ## 0.1.0
 
 - 使用官方 Codex CLI app-server 读取账号与额度。

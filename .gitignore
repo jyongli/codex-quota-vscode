@@ -4,5 +4,5 @@ dist/
 artifacts/
 .vscode-test/
 *.vsix
-!releases/v0.1.0/codex-quota-vscode-0.1.0.vsix
+!releases/*/codex-quota-vscode-*.vsix
 *.log
