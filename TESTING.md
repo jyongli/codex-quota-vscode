@@ -1,5 +1,20 @@
 # 验证记录
 
+## 0.1.1
+
+验证日期：2026-10-10。当前云环境为 Linux x64。
+
+- `npm test`：33 项通过，1 项 Windows 原生窗口测试按平台跳过；覆盖 Windows x64／ARM64、官方 npm 平台依赖／旧 vendor、新旧二进制目录、缺少依赖与超时阶段。
+- `npm run test:bundle`：9 项通过，加载实际打包入口。
+- 官方 npm Codex CLI `0.162.1`：真实初始化与账号读取通过，使用临时未登录配置，不读取实际凭据。
+- 真实 VS Code `1.95.3` Linux 扩展宿主：激活／账号来源、位置切换、仅周额度、API Key 状态 4 组断言通过。
+- [Windows／Linux CI 第 6 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38032519526)：通过。Windows 34 项测试全部通过，含原生控制台探针（调用 `GetConsoleWindow`，确认查询进程没有控制台）；打包入口 9 项、真实 VS Code 宿主 4 组及官方 npm CLI `0.162.1` 的未登录冒烟均通过。Release 必须等待 Windows 检查通过。
+- VSIX 安装及安装后 Linux 宿主测试：通过，4 组断言。最终发布包的入口与已实测的安装入口字节一致，ZIP／清单校验通过，版本为 `0.1.1`。
+
+窗口探针使用 Windows 自带 .NET Framework C# 编译器构建独立控制台程序，不访问凭据。真实 ChatGPT 订阅额度、用户桌面上的 Windows Terminal、ARM64 原生执行及实际远程机器仍需实机验收。
+
+## 0.1.0
+
 验证日期：2026-10-10。环境：Linux x64、Node.js 24.19.0、npm 11.9.0。
 
 | 检查 | 结果 | 实际范围 |

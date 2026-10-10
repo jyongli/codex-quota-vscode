@@ -12,8 +12,30 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: codex-quota-release
+  cancel-in-progress: false
+
 jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:bundle
+      - run: npm run test:vscode
+      - name: Test the official Windows npm CLI
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/codex-quota-native" --no-package-lock @openai/codex@0.162.1
+          node scripts/test-native.mjs "$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js"
   release:
+    needs: windows
     runs-on: ubuntu-latest
     permissions:
       contents: write

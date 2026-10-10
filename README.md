@@ -12,15 +12,15 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 
 要求桌面 VS Code 1.95+。在要查询的机器安装官方 [Codex CLI](https://github.com/openai/codex)，建议 0.116.0+，并用 ChatGPT 账号执行 `codex login`。
 
-从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 VSIX；已验证的 0.1.0 包也保存在 [releases/v0.1.0](releases/v0.1.0) 中，可用以下链接直接下载：
+从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 VSIX。**Windows 用户请使用 0.1.1 或更新版本**，修复 npm 版 CLI 查询时弹出命令行窗口的问题。0.1.1 包也保存在 [releases/v0.1.1](releases/v0.1.1) 中，可用以下链接直接下载：
 
-- [codex-quota-vscode-0.1.0.vsix](https://github.com/jyongli/codex-quota-vscode/raw/refs/heads/main/releases/v0.1.0/codex-quota-vscode-0.1.0.vsix)
-- [SHA256 校验文件](https://github.com/jyongli/codex-quota-vscode/raw/refs/heads/main/releases/v0.1.0/codex-quota-vscode-0.1.0.vsix.sha256)
+- [codex-quota-vscode-0.1.1.vsix](https://github.com/jyongli/codex-quota-vscode/raw/refs/heads/main/releases/v0.1.1/codex-quota-vscode-0.1.1.vsix)
+- [SHA256 校验文件](https://github.com/jyongli/codex-quota-vscode/raw/refs/heads/main/releases/v0.1.1/codex-quota-vscode-0.1.1.vsix.sha256)
 
 从 VS Code 扩展视图的“…”菜单选择 **Install from VSIX / 从 VSIX 安装**。本地安装也可执行：
 
 ```sh
-code --install-extension codex-quota-vscode-0.1.0.vsix
+code --install-extension codex-quota-vscode-0.1.1.vsix
 ```
 
 插件默认在本地执行。CLI 不在 VS Code 进程的 PATH 中时，在用户设置中指定 `codexQuota.cliPath` 的绝对路径；图形界面启动的 VS Code 不一定继承终端的 PATH。
@@ -88,7 +88,9 @@ API Key、Amazon Bedrock 和未登录状态会分别标明，不伪造 ChatGPT �
 
 请求超时、协议错误或网络失败后会清除旧数字并显示“查询失败”。设置变化取消旧查询；插件卸载会终止辅助进程。查询只调用初始化、账号读取与额度读取，不创建会话，不发起模型生成。
 
-CLI 用参数数组启动，`shell: false`；路径不是 shell 命令，不能填写管道或额外参数。Windows 支持 `codex.exe` 以及官方 npm 的 `codex.cmd` 包装入口（转换为 `bin/codex.js`），也可直接配置官方 JS 入口的绝对路径。Windows 原生进程行为尚需在 Windows VS Code 中实测。
+CLI 用参数数组在后台启动，`shell: false`、`windowsHide: true`，通过管道通信，不打开终端窗口；路径不是 shell 命令，不能填写管道或额外参数。Windows 支持直接配置 `codex.exe`，也支持官方 npm 的 `codex.cmd` 和 `bin/codex.js` 入口。插件会将官方 npm 入口解析为已安装的原生 `codex.exe` 后直接启动，避免 JS 包装器二次启动时弹出窗口；支持 x64／ARM64、平台依赖包与旧版内置 vendor 目录。缺少原生依赖时提示重新安装 CLI，不退回包装器。查询完成、取消或超时后结束辅助进程。
+
+默认查询超时为 60 秒，保留用户已有设置。超时提示会指出发生在 CLI 查找／初始化、账号读取、额度读取或账号确认阶段。若仍显示“读取额度超时”，先在**所选环境**的终端确认 `codex --version` 和 ChatGPT 登录可用，并检查 CLI 到官方服务的网络；可把 `codexQuota.requestTimeoutSeconds` 设置为 120 后手动重试。增加超时不会修复登录或网络故障。
 
 ## 设置
 
@@ -98,7 +100,7 @@ CLI 用参数数组启动，`shell: false`；路径不是 shell 命令，不能�
 | `codexQuota.cliPath` | `codex` | 当前执行宿主的 CLI 路径；机器级用户设置 |
 | `codexQuota.codexHome` | 空 | 继承宿主配置；支持绝对路径和 `~/` |
 | `codexQuota.refreshIntervalSeconds` | `300` | 自动刷新间隔，60–3600 秒 |
-| `codexQuota.requestTimeoutSeconds` | `20` | 查询超时，5–120 秒 |
+| `codexQuota.requestTimeoutSeconds` | `60` | 整个查询的超时，5–120 秒；错误标明失败阶段 |
 
 CLI 路径和 Codex 配置目录采用机器级配置，不接受工作区覆盖。工作区需要受到信任才能执行 CLI。插件不增加遥测、不上传账号信息；Codex 自身的网络和遥测遵循其官方配置。上游原始错误和 stderr 不写入插件 UI，避免意外暴露凭据。
 
@@ -133,8 +135,8 @@ xvfb-run -a npm run test:vscode
 
 该测试验证激活、额度状态、账号来源、位置切换和 API Key 状态。真实远程宿主验证仍需按上面的步骤在实际 SSH / WSL / 容器连接中安装并切换。按 F5 可启动扩展调试宿主。
 
-打包结果位于 `artifacts/codex-quota-vscode-0.1.0.vsix`。只包含运行入口、清单、README、变更记录和许可证；没有运行时 npm 依赖，不包含测试、开发依赖或凭据。打包命令只生成本地文件，不推送或发布。
+打包结果位于 `artifacts/codex-quota-vscode-<版本>.vsix`，版本取自 `package.json`。只包含运行入口、清单、README、变更记录和许可证；没有运行时 npm 依赖，不包含测试、开发依赖或凭据。打包命令只生成本地文件，不推送或发布。
 
-发布到 GitHub 使用 `.github/workflows/release.yml`：推送 `v*` 标签，或在 `main` 更新发布目录／发布工作流后，完成测试、校验 `releases/<标签>` 中已验证的 VSIX，并创建附带安装包与 SHA256 的 Release。主分支及手动运行根据 `package.json` 版本选择已有标签；已有 Release 不重复创建。该工作流需要仓库启用 GitHub Actions；写权限仅赋予发布任务。
+发布到 GitHub 使用 `.github/workflows/release.yml`：推送 `v*` 标签，或在 `main` 更新发布目录／发布工作流后，完成 Windows 与 Linux 测试、校验 `releases/<标签>` 中已验证的 VSIX，并创建附带安装包与 SHA256 的 Release。主分支及手动运行根据 `package.json` 版本选择已有标签；已有 Release 不重复创建。该工作流需要仓库启用 GitHub Actions；写权限仅赋予发布任务。
 
 本次验证的具体结果与实测范围见仓库开发文档 `TESTING.md`（不包含在 VSIX 内）。
