@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { QuotaApi } from '../../src/extension';
@@ -8,6 +8,17 @@ import { REMOTE_PROTOCOL, REMOTE_QUERY, RemoteReply } from '../../src/remoteProt
 import { randomUUID } from 'node:crypto';
 import { ReadableStream } from 'node:stream/web';
 import { RemoteSupport } from '../../src/remoteSupport';
+
+async function chooseLanguage(index: number): Promise<void> {
+  const command = vscode.commands.executeCommand('codexQuota.selectLanguage');
+  await new Promise(resolve => setTimeout(resolve, 250));
+  for (let step = 0; step < index; step++) await vscode.commands.executeCommand('workbench.action.quickOpenSelectNext');
+  await vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem');
+  await Promise.race([
+    command,
+    new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Language menu command did not complete')), 10000); timer.unref(); })
+  ]);
+}
 
 export async function run(): Promise<void> {
   const home = await mkdtemp(path.join(tmpdir(), 'codex-quota-vscode-'));
@@ -33,14 +44,34 @@ export async function run(): Promise<void> {
     assert.doesNotMatch(api.getState().tooltip, /数据来源：|账号来源：|CLI：|Codex 配置目录：|凭据由 Codex/);
     console.log('PASS: extension activation, real child-process quota, compact tooltip with host IP and refresh interval');
     const checkedAt = api.getState().snapshot?.checkedAt;
-    await config.update('language', 'en', vscode.ConfigurationTarget.Global);
+    await chooseLanguage(2);
     await new Promise(resolve => setTimeout(resolve, 100));
     assert.equal(api.getState().text, 'Codex [Local] 5h 75% · Week 60%');
     assert.match(api.getState().tooltip, /Account: fixture@example.test/);
     assert.equal(api.getState().snapshot?.checkedAt, checkedAt);
     await config.update('language', 'zh-CN', vscode.ConfigurationTarget.Global);
     await new Promise(resolve => setTimeout(resolve, 100));
-    console.log('PASS: immediate language switch preserves the quota snapshot in the real VS Code host');
+    console.log('PASS: actual language menu switches immediately and preserves the quota snapshot in the real VS Code host');
+    await config.update('language', 'zh-CN', vscode.ConfigurationTarget.Workspace);
+    const settingsFile = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, '.vscode', 'settings.json').fsPath;
+    const validSettings = await readFile(settingsFile, 'utf8');
+    const invalidSettings = validSettings + '\nINVALID_JSON_FOR_LANGUAGE_TEST\n';
+    try {
+      await writeFile(settingsFile, invalidSettings);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await chooseLanguage(2);
+      assert.equal(api.getState().text, 'Codex [Local] 5h 75% · Week 60%');
+      assert.equal(api.getState().snapshot?.checkedAt, checkedAt);
+      assert.equal(vscode.workspace.getConfiguration('codexQuota').get('language'), 'zh-CN', 'the failed settings update must not be mistaken for a successful write');
+      assert.equal(await readFile(settingsFile, 'utf8'), invalidSettings, 'do not overwrite invalid user settings');
+    } finally {
+      await writeFile(settingsFile, validSettings);
+      await vscode.commands.executeCommand('notifications.clearAll');
+      await chooseLanguage(1);
+      await config.update('language', undefined, vscode.ConfigurationTarget.Workspace);
+    }
+    assert.match(api.getState().text, /Codex \[本地\]/);
+    console.log('PASS: language menu still switches with invalid settings, preserves quota and leaves the settings file intact');
     const originalFetch = globalThis.fetch;
     let publicIpCalls = 0;
     globalThis.fetch = async input => {
@@ -137,6 +168,7 @@ export async function run(): Promise<void> {
       console.log('PASS: real VS Code extension host launches the official npm Codex CLI and reads an isolated unsigned-in account');
     }
   } finally {
+    await config.update('language', undefined, vscode.ConfigurationTarget.Workspace);
     await config.update('statusBarPosition', undefined, vscode.ConfigurationTarget.Workspace);
     for (const [key, value] of Object.entries(previous)) await config.update(key, value, vscode.ConfigurationTarget.Global);
     await rm(home, { recursive: true, force: true });

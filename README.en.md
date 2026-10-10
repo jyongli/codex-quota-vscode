@@ -13,9 +13,9 @@ Codex Quota is a **Visual Studio Code extension** that displays the remaining qu
 
 Use desktop VS Code 1.95+ and the [official Codex CLI](https://github.com/openai/codex) on each machine you want to query. Sign in with `codex login` using ChatGPT. Codex CLI 0.116.0+ is recommended; Windows and Linux tests also use 0.162.1.
 
-Download version 0.1.7 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
+Download version 0.1.8 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
 
-- [Local main extension](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.7/codex-quota-vscode-0.1.7.vsix)
+- [Local main extension](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.8/codex-quota-vscode-0.1.8.vsix)
 
 Install the single VSIX locally using **Extensions → … → Install from VSIX**. Connect to an SSH / WSL / Dev Container / desktop Codespaces workspace, sign in to Codex CLI on that machine, and choose **Remote** from the status bar menu. Missing remote support is installed automatically from the archive embedded in the main VSIX using VS Code’s built-in installer. No second download or Marketplace dependency is required. Already compatible remote components remain in use.
 
@@ -26,6 +26,8 @@ VS Code chooses one execution host for each extension ID, even when installed on
 Click the status bar → **Choose display language** → **Follow VS Code**, **中文**, or **English**. The extension menus, status bar, tooltip, account descriptions and errors update immediately, preserving the quota snapshot without restarting the query or window. Automatic mode uses Chinese for Chinese VS Code locales and English otherwise.
 
 Command palette titles, extension descriptions and VS Code settings labels follow VS Code’s own display language through manifest localization. The extension’s independent language option controls runtime UI. Actual account emails, IP addresses, paths and plan names remain unchanged.
+
+The menu first updates the effective user or workspace setting. If that settings file contains JSON errors, has unsaved changes or is not writable, the language still changes immediately and is saved in VS Code extension storage; workspace choices stay in that workspace. A notice links to diagnostics containing a fixed error category, without overwriting the settings file. A successful subsequent menu save or manual language-setting change clears the fallback preference. If both stores fail, the language changes for the current window with an explicit notice that it will not persist after closing; quota stays intact.
 
 ## Host addresses
 

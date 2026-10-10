@@ -31,6 +31,10 @@ interface MockState {
   reloads: number;
   installs: unknown[];
   install?: () => Promise<void>;
+  settingError?: Error;
+  storageError?: Error;
+  globalPreferences: Record<string, unknown>;
+  workspacePreferences: Record<string, unknown>;
 }
 let state: MockState;
 const env: { remoteName?: string; language: string } = { language: 'zh-cn' };
@@ -44,6 +48,7 @@ const workspace = {
       }; },
       async update(key: string, value: unknown, target: number) {
         state.updates.push({ key, target });
+        if (state.settingError) throw state.settingError;
         if (section === 'remote') state.kinds = value as MockState['kinds'];
         else if (target === 2) state.workspaceValues[key] = value;
         else state.settings[key] = value;
@@ -75,7 +80,7 @@ const mock = {
     },
     async showQuickPick(items: { label: string }[]) { state.picks.push(items); const result = state.choice; state.choice = undefined; return result; },
     async showInformationMessage(message: string) { state.messages.push(message); return undefined; },
-    async showWarningMessage(message: string) { state.messages.push(message); return undefined; },
+    async showWarningMessage(message: string) { state.messages.push(message); const action = state.errorAction; state.errorAction = undefined; return action; },
     async showErrorMessage(message: string) {
       state.messages.push(message); state.errors.push(message);
       const action = state.errorAction; state.errorAction = undefined; return action;
@@ -134,6 +139,7 @@ function fire(changed: string): void {
 async function harness(scenario: unknown, options: {
   remoteName?: string; workspaceHost?: boolean; remoteSelected?: boolean; trusted?: boolean;
   provider?: boolean; providerUi?: boolean; remoteScenario?: unknown; workspacePosition?: string; legacyKinds?: boolean; language?: LanguageSetting; vscodeLanguage?: string; workspaceLanguage?: LanguageSetting; publicIp?: boolean;
+  globalPreferences?: Record<string, unknown>; workspacePreferences?: Record<string, unknown>;
 } = {}): Promise<{ api: QuotaApi; home: string; remoteHome?: string; dispose(): Promise<void> }> {
   const home = await scenarioHome(scenario);
   state = {
@@ -142,7 +148,8 @@ async function harness(scenario: unknown, options: {
     workspaceValues: { ...(options.workspacePosition ? { statusBarPosition: options.workspacePosition } : {}), ...(options.workspaceLanguage ? { language: options.workspaceLanguage } : {}) }, updates: [],
     kinds: options.legacyKinds ? { 'other.extension': ['ui'], 'jyongli.codex-quota-vscode': ['workspace'] } : {},
     listeners: new Set(), commands: new Map(), bars: [], messages: [], errors: [],
-    output: { lines: [], shown: 0, disposed: false }, picks: [], reloads: 0, installs: []
+    output: { lines: [], shown: 0, disposed: false }, picks: [], reloads: 0, installs: [],
+    globalPreferences: options.globalPreferences ?? {}, workspacePreferences: options.workspacePreferences ?? {}
   };
   env.remoteName = options.remoteName;
   env.language = options.vscodeLanguage ?? 'zh-cn';
@@ -156,6 +163,14 @@ async function harness(scenario: unknown, options: {
     activateRemote({ extension: { extensionKind: options.providerUi ? 1 : 2 }, subscriptions: remoteSubscriptions } as unknown as VSCode.ExtensionContext);
   }
   const api = await activate({
+    globalState: {
+      get(key: string) { return state.globalPreferences[key]; },
+      async update(key: string, value: unknown) { if (state.storageError) throw state.storageError; if (value === undefined) delete state.globalPreferences[key]; else state.globalPreferences[key] = value; }
+    },
+    workspaceState: {
+      get(key: string) { return state.workspacePreferences[key]; },
+      async update(key: string, value: unknown) { if (state.storageError) throw state.storageError; if (value === undefined) delete state.workspacePreferences[key]; else state.workspacePreferences[key] = value; }
+    },
     extensionUri: { fsPath: path.resolve(__dirname, '../..') },
     extension: { id: 'jyongli.codex-quota-vscode', extensionKind: options.workspaceHost ? 2 : 1 },
     globalStorageUri: { fsPath: path.join(home, 'runtime') }, subscriptions
@@ -460,6 +475,106 @@ test('英文 VS Code 默认跟随英语；手动语言覆盖并即时重译缓�
     assert.equal(state.errors.length, 2);
     assert.match(state.errors[1], /Codex quota query failed:.*quota read/);
     assert.doesNotMatch(state.output.lines.join('\n'), /SENSITIVE_MOCK_TOKEN/);
+  } finally { await h.dispose(); }
+});
+
+test('设置不可写时语言仍立即切换，保存插件偏好并在重新激活后恢复', async () => {
+  const h = await harness({});
+  let preferences: Record<string, unknown>;
+  try {
+    await h.api.refresh();
+    const snapshot = h.api.getState().snapshot;
+    const trace = await readTrace(h.home);
+    state.settingError = new Error('EACCES SENSITIVE_MOCK_TOKEN');
+    state.choice = { language: 'en', label: 'English' };
+    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    assert.equal(h.api.getState().text, 'Codex [Local] 5h 75% · Week 60%');
+    assert.equal(state.settings.language, 'auto');
+    assert.equal(h.api.getState().snapshot, snapshot);
+    assert.deepEqual(await readTrace(h.home), trace);
+    assert.equal(state.errors.length, 0);
+    assert.match(state.messages.at(-1)!, /Language changed and saved/);
+    assert.match(state.output.lines.join('\n'), /not writable/);
+    assert.doesNotMatch(state.output.lines.join('\n'), /SENSITIVE_MOCK_TOKEN/);
+    preferences = structuredClone(state.globalPreferences);
+  } finally { await h.dispose(); }
+  const restored = await harness({}, { globalPreferences: structuredClone(preferences!) });
+  try {
+    await restored.api.refresh();
+    assert.match(restored.api.getState().text, /Codex \[Local\]/);
+    state.settings.language = 'zh-CN'; fire('codexQuota.language');
+    assert.match(restored.api.getState().text, /Codex \[本地\]/);
+    assert.deepEqual(state.globalPreferences, {});
+  } finally { await restored.dispose(); }
+  const changed = await harness({}, { globalPreferences: preferences!, language: 'zh-CN' });
+  try {
+    await changed.api.refresh();
+    assert.match(changed.api.getState().text, /Codex \[本地\]/, 'a preference must not override a subsequently changed setting');
+  } finally { await changed.dispose(); }
+});
+
+test('JSON 错误与未保存设置不阻止语言切换，工作区偏好隔离且正常保存后清除', async () => {
+  for (const [error, hint] of [['Unable to write settings because it contains errors SENSITIVE_MOCK_TOKEN', /JSON/],
+    ['Unable to write settings because the file is dirty SENSITIVE_MOCK_TOKEN', /unsaved changes/]] as const) {
+    const h = await harness({}, { workspaceLanguage: 'zh-CN' });
+    try {
+      await h.api.refresh();
+      const snapshot = h.api.getState().snapshot;
+      state.settingError = new Error(error);
+      state.choice = { language: 'en', label: 'English' };
+      await mock.commands.executeCommand('codexQuota.selectLanguage');
+      assert.equal(h.api.getState().snapshot, snapshot);
+      assert.match(h.api.getState().text, /Codex \[Local\]/);
+      assert.equal(state.workspaceValues.language, 'zh-CN');
+      assert.deepEqual(state.globalPreferences, {});
+      assert.ok(Object.keys(state.workspacePreferences).length);
+      assert.match(state.output.lines.join('\n'), hint);
+      assert.doesNotMatch(state.output.lines.join('\n'), /SENSITIVE_MOCK_TOKEN/);
+      assert.equal(state.errors.length, 0);
+      state.settingError = undefined;
+      state.choice = { language: 'en', label: 'English' };
+      await mock.commands.executeCommand('codexQuota.selectLanguage');
+      assert.equal(state.workspaceValues.language, 'en');
+      assert.deepEqual(state.workspacePreferences, {});
+      assert.match(h.api.getState().text, /Codex \[Local\]/);
+      assert.equal(state.reloads, 0);
+    } finally { await h.dispose(); }
+  }
+});
+
+test('保存失败后的跟随 VS Code 选项仍按界面语言生效，不中断额度查询', async () => {
+  const h = await harness({}, { language: 'en', vscodeLanguage: 'zh-cn' });
+  try {
+    await h.api.refresh();
+    const snapshot = h.api.getState().snapshot;
+    state.settingError = new Error('settings are read-only');
+    state.choice = { language: 'auto', label: 'Follow VS Code' };
+    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    assert.equal(state.settings.language, 'en');
+    assert.match(h.api.getState().text, /Codex \[本地\]/);
+    assert.equal(h.api.getState().snapshot, snapshot);
+    assert.equal(state.errors.length, 0);
+  } finally { await h.dispose(); }
+});
+
+test('设置和插件存储均写入失败时仍切换当前窗口语言，保留额度并明确不会持久化', async () => {
+  const h = await harness({});
+  try {
+    await h.api.refresh();
+    const snapshot = h.api.getState().snapshot;
+    state.settingError = new Error('invalid JSON SENSITIVE_MOCK_TOKEN');
+    state.storageError = new Error('EACCES SENSITIVE_MOCK_TOKEN');
+    state.errorAction = 'View diagnostics';
+    state.choice = { language: 'en', label: 'English' };
+    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    assert.match(h.api.getState().text, /Codex \[Local\]/);
+    assert.equal(h.api.getState().snapshot, snapshot);
+    assert.deepEqual(state.globalPreferences, {});
+    assert.equal(state.errors.length, 0);
+    assert.match(state.messages.at(-1)!, /will not persist/);
+    assert.equal(state.output.shown, 1);
+    assert.match(state.output.lines.join('\n'), /JSON.*not writable/);
+    assert.doesNotMatch(state.output.lines.join('\n') + state.messages.join('\n'), /SENSITIVE_MOCK_TOKEN/);
   } finally { await h.dispose(); }
 });
 

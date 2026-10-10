@@ -17,17 +17,17 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 
 要求桌面 VS Code 1.95+。在要查询的机器安装官方 [Codex CLI](https://github.com/openai/codex)，建议 0.116.0+，并用 ChatGPT 账号执行 `codex login`。
 
-从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.7**，只需一个安装包：
+从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.8**，只需一个安装包：
 
-- [Codex Quota 安装包 codex-quota-vscode-0.1.7.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.7/codex-quota-vscode-0.1.7.vsix)
-- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.7/codex-quota-vscode-0.1.7.vsix.sha256)
+- [Codex Quota 安装包 codex-quota-vscode-0.1.8.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.8/codex-quota-vscode-0.1.8.vsix)
+- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.8/codex-quota-vscode-0.1.8.vsix.sha256)
 
 在本地安装这个 VSIX。连接远程工作区并选择“远程”后，插件会使用 VS Code 内置安装命令，把包内的远程查询组件安装到当前远程宿主，不需要再下载第二个 VSIX，也不依赖 Marketplace。已有协议兼容的远程组件会继续使用，避免打断正在运行的扩展。
 
 从 VS Code 扩展视图的“…”菜单选择 **Install from VSIX / 从 VSIX 安装**。本地安装也可执行：
 
 ```sh
-code --install-extension codex-quota-vscode-0.1.7.vsix
+code --install-extension codex-quota-vscode-0.1.8.vsix
 ```
 
 VS Code 商店的发布配置与操作见 [Marketplace 发布说明](MARKETPLACE.md)。发布流程使用已通过双平台检查的 GitHub Release 安装包。
@@ -75,6 +75,8 @@ VS Code 商店的发布配置与操作见 [Marketplace 发布说明](MARKETPLACE
 点击状态栏 → **选择显示语言 / Choose display language**，可选择 **跟随 VS Code、中文、English**。也可设置 `codexQuota.language` 为 `auto`、`zh-CN` 或 `en`。自动模式对中文 VS Code 显示中文，其他界面语言显示英文。
 
 插件菜单、状态栏、悬浮提示、账号说明及错误提示立即切换，保留当前额度和查询时间，不中断查询、不重载窗口。命令面板标题、扩展说明及原生设置页面文案使用 VS Code 的清单翻译机制，跟随 VS Code 界面语言；独立的插件语言选项控制插件运行时显示。账号邮箱、IP、文件路径和计划名称保留接口原始值。
+
+语言菜单先更新当前生效的用户／工作区设置。设置文件含 JSON 错误、未保存修改或不可写时，语言仍立即切换，并保存到 VS Code 的插件存储；工作区选择保存在对应工作区。插件会给出信息提示，诊断日志记录固定的错误类别，不覆盖原设置文件。重新选择语言且设置保存成功，或手动修改语言设置后，清除此前的插件偏好。若设置和插件存储都不能写入，则仍切换当前窗口的语言，并明确提示关闭窗口后不会保留；额度不受影响。
 
 ## 官方接口与账号来源
 

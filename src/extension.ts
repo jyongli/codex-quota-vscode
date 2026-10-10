@@ -19,6 +19,23 @@ export interface QuotaApi {
   getState(): ExtensionState;
 }
 
+const LANGUAGE_PREFERENCE = 'codexQuota.languagePreference';
+interface LanguagePreference { language: LanguageSetting; configured: LanguageSetting }
+
+function validPreference(value: LanguagePreference | undefined): LanguagePreference | undefined {
+  return value && ['auto', 'zh-CN', 'en'].includes(value.language) && ['auto', 'zh-CN', 'en'].includes(value.configured) ? value : undefined;
+}
+
+function settingFailureHint(error: unknown): MessageKey {
+  // Classify editor errors without exposing raw messages, file contents or paths.
+  const message = error instanceof Error ? error.message : '';
+  if (/json|syntax|errors\/warnings|errors in|contains errors|解析|语法/i.test(message)) return 'settingsInvalid';
+  if (/dirty|unsaved|save.*settings.*first|未保存/i.test(message)) return 'settingsUnsaved';
+  if (/permission|read.?only|eacces|eperm|access.*denied|权限|只读|拒绝访问/i.test(message)) return 'settingsReadOnly';
+  if (/policy|managed|策略/i.test(message)) return 'settingsManaged';
+  return 'settingsWriteFailed';
+}
+
 function singleLine(value: string): string {
   return value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\$\(/g, '(');
 }
@@ -45,8 +62,11 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private notificationCount = 0;
   private readonly remoteSupport: RemoteSupport;
   private preparingRemote = false;
+  private languagePreference?: LanguagePreference;
 
-  constructor(context: vscode.ExtensionContext) {
+  constructor(private readonly context: vscode.ExtensionContext) {
+    this.languagePreference = validPreference(context.workspaceState.get<LanguagePreference>(LANGUAGE_PREFERENCE))
+      ?? validPreference(context.globalState.get<LanguagePreference>(LANGUAGE_PREFERENCE));
     this.remoteSupport = new RemoteSupport((command, argument) => vscode.commands.executeCommand(command, argument),
       vscode.Uri.joinPath(context.extensionUri, 'bundled', 'remote.vsix'));
     this.output = vscode.window.createOutputChannel('Codex Quota');
@@ -64,14 +84,20 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     };
     for (const [name, action] of Object.entries(commands)) {
       this.subscriptions.push(vscode.commands.registerCommand(name, async () => {
-        try { return await action(); } catch {
-          await vscode.window.showErrorMessage(this.t('settingsFailed'));
+        try { return await action(); } catch (error) {
+          this.output.appendLine(`[${new Date().toISOString()}] ${name}: ${this.t(settingFailureHint(error))}`);
+          const label = this.t('diagnostics');
+          const choice = await vscode.window.showErrorMessage(this.t('settingsFailed'), label);
+          if (choice === label && !this.disposed) this.output.show(true);
           return undefined;
         }
       }));
     }
     this.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-      if (event.affectsConfiguration('codexQuota.language')) this.render();
+      if (event.affectsConfiguration('codexQuota.language')) {
+        this.clearLanguagePreference();
+        this.render();
+      }
       if (event.affectsConfiguration('codexQuota.statusBarPosition')) {
         this.createBar();
         this.render();
@@ -90,7 +116,31 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 
   private position(): 'left' | 'right' { return this.config().get('statusBarPosition') === 'left' ? 'left' : 'right'; }
 
-  private language(): Language { return resolveLanguage(this.config().get('language', 'auto'), vscode.env.language); }
+  private language(): Language {
+    const configured = this.config().get<LanguageSetting>('language', 'auto');
+    return resolveLanguage(this.languagePreference?.configured === configured ? this.languagePreference.language : configured, vscode.env.language);
+  }
+
+  private clearLanguagePreference(): void {
+    this.languagePreference = undefined;
+    for (const store of [this.context.workspaceState, this.context.globalState]) {
+      if (store.get(LANGUAGE_PREFERENCE) !== undefined) {
+        void Promise.resolve(store.update(LANGUAGE_PREFERENCE, undefined)).catch(() => {
+          if (!this.disposed) this.output.appendLine(this.t('languagePreferenceCleanupFailed'));
+        });
+      }
+    }
+  }
+
+  private languageNotice(key: 'languageSavedLocally' | 'languageSessionOnly'): void {
+    const label = this.t('diagnostics');
+    const notice = key === 'languageSessionOnly'
+      ? vscode.window.showWarningMessage(this.t(key), label)
+      : vscode.window.showInformationMessage(this.t(key), label);
+    void Promise.resolve(notice).then(choice => {
+      if (choice === label && !this.disposed) this.output.show(true);
+    }).catch(() => {});
+  }
 
   private t(key: MessageKey, values?: Message['values']): string { return t(this.language(), key, values); }
 
@@ -278,7 +328,25 @@ class QuotaController implements vscode.Disposable, QuotaApi {
       { label: 'English', language: 'en' as LanguageSetting }
     ], { title: this.t('menuLanguage'), placeHolder: this.t('currentLanguage', { value: this.language() === 'en' ? 'English' : '中文' }) });
     if (!selection) return;
-    await this.config().update('language', selection.language, this.settingTarget('language'));
+    const target = this.settingTarget('language');
+    try {
+      await this.config().update('language', selection.language, target, false);
+    } catch (error) {
+      const preference: LanguagePreference = { language: selection.language, configured: this.config().get('language', 'auto') };
+      const store = target === vscode.ConfigurationTarget.Workspace ? this.context.workspaceState : this.context.globalState;
+      this.languagePreference = preference;
+      this.render();
+      try { await store.update(LANGUAGE_PREFERENCE, preference); }
+      catch (storageError) {
+        this.output.appendLine(`[${new Date().toISOString()}] codexQuota.language: ${this.t(settingFailureHint(error))} ${this.t(settingFailureHint(storageError))} ${this.t('languageSessionOnly')}`);
+        this.languageNotice('languageSessionOnly');
+        return;
+      }
+      this.output.appendLine(`[${new Date().toISOString()}] codexQuota.language: ${this.t(settingFailureHint(error))} ${this.t('languageSavedLocally')}`);
+      this.languageNotice('languageSavedLocally');
+      return;
+    }
+    this.clearLanguagePreference();
     this.render();
   }
 

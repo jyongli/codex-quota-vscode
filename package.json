@@ -2,7 +2,7 @@
   "name": "codex-quota-vscode",
   "displayName": "Codex Quota",
   "description": "%main.description%",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "jyongli",
   "license": "MIT",
   "repository": {
