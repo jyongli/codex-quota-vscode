@@ -28,12 +28,13 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:bundle
-      - run: npm run test:vscode
       - name: Test the official Windows npm CLI
         shell: bash
         run: |
           npm install --prefix "$RUNNER_TEMP/codex-quota-native" --no-package-lock @openai/codex@0.162.1
           node scripts/test-native.mjs "$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js"
+          printf '%s\n' "CODEX_QUOTA_NATIVE_CLI=$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js" >> "$GITHUB_ENV"
+      - run: npm run test:vscode
   release:
     needs: windows
     runs-on: ubuntu-latest
@@ -59,6 +60,11 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:bundle
+      - name: Test the official Linux npm CLI
+        run: |
+          npm install --prefix "$RUNNER_TEMP/codex-quota-native" --no-package-lock @openai/codex@0.162.1
+          node scripts/test-native.mjs "$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js"
+          printf '%s\n' "CODEX_QUOTA_NATIVE_CLI=$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js" >> "$GITHUB_ENV"
       - run: xvfb-run -a npm run test:vscode
       - name: Verify the tested VSIX
         run: |
