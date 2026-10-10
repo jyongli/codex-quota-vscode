@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import { CodexQueryError, queryCodex, Snapshot } from './cli';
-import { ExtensionKinds, hostIpAddress, selectedTarget, ExecutionTarget } from './environment';
+import { activeTarget, hostIpAddress, ExecutionTarget } from './environment';
 import { accountText, quotaText, QuotaWindow } from './quota';
-import { RemoteSupport } from './remoteSupport';
 import { errorMessage, Language, LanguageSetting, Message, MessageKey, resolveLanguage, t, text } from './i18n';
 import { getPublicIp } from './publicIp';
 
@@ -55,28 +54,21 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private snapshot?: Snapshot;
   private error?: Message;
   private loading = false;
-  private target: ExecutionTarget;
-  private readonly misplacedHost: boolean;
+  private readonly target: ExecutionTarget;
   private readonly output: vscode.OutputChannel;
   private notifiedError?: string;
   private notificationCount = 0;
-  private readonly remoteSupport: RemoteSupport;
-  private preparingRemote = false;
   private languagePreference?: LanguagePreference;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.languagePreference = validPreference(context.workspaceState.get<LanguagePreference>(LANGUAGE_PREFERENCE))
       ?? validPreference(context.globalState.get<LanguagePreference>(LANGUAGE_PREFERENCE));
-    this.remoteSupport = new RemoteSupport((command, argument) => vscode.commands.executeCommand(command, argument),
-      vscode.Uri.joinPath(context.extensionUri, 'bundled', 'remote.vsix'));
     this.output = vscode.window.createOutputChannel('Codex Quota');
-    this.target = this.selectedEnvironment();
-    this.misplacedHost = context.extension.extensionKind === vscode.ExtensionKind.Workspace && !!vscode.env.remoteName;
+    this.target = activeTarget(context.extension.extensionKind === vscode.ExtensionKind.Workspace, vscode.env.remoteName);
     this.createBar();
     const commands: Record<string, () => unknown> = {
       'codexQuota.menu': () => this.menu(),
       'codexQuota.refresh': () => this.manualRefresh(),
-      'codexQuota.selectEnvironment': () => this.selectEnvironment(),
       'codexQuota.togglePosition': () => this.togglePosition(),
       'codexQuota.selectLanguage': () => this.selectLanguage(),
       'codexQuota.showAccount': () => this.showAccount(),
@@ -102,7 +94,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
         this.createBar();
         this.render();
       }
-      if (['executionEnvironment', 'cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'refreshIntervalSeconds', 'requestTimeoutSeconds', 'showPublicIp'].some(key => event.affectsConfiguration(`codexQuota.${key}`))) {
+      if (['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'refreshIntervalSeconds', 'requestTimeoutSeconds', 'showPublicIp'].some(key => event.affectsConfiguration(`codexQuota.${key}`))) {
         this.invalidate();
         this.startPolling();
       }
@@ -156,8 +148,15 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     this.bar.show();
   }
 
-  private selectedEnvironment(): ExecutionTarget {
-    return this.config().get<ExecutionTarget>('executionEnvironment', 'local') === 'remote' ? 'remote' : 'local';
+  private hostSetting(key: 'cliPath' | 'codexHome', fallback: string): string {
+    const config = this.config();
+    // Machine-scoped settings belong to the actual workspace host. Preserve the
+    // former remote keys only until the user sets the unified host setting.
+    if (this.target === 'remote' && config.inspect(key)?.globalValue === undefined) {
+      const legacy = key === 'cliPath' ? 'remoteCliPath' : 'remoteCodexHome';
+      return config.get(legacy, fallback);
+    }
+    return config.get(key, fallback);
   }
 
   private settingTarget(key: string): vscode.ConfigurationTarget {
@@ -169,8 +168,6 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 
   private pendingReason(): string | undefined {
     if (!vscode.workspace.isTrusted) return this.t('trustRequired');
-    if (this.misplacedHost) return this.t('localHostRequired');
-    if (this.target === 'remote' && !vscode.env.remoteName) return this.t('remoteDisconnected');
     return undefined;
   }
 
@@ -179,14 +176,12 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     this.abort?.abort();
     this.running = undefined;
     this.loading = false;
-    this.preparingRemote = false;
     this.snapshot = undefined;
     this.error = undefined;
   }
 
   private startPolling(): void {
     if (this.interval) clearInterval(this.interval);
-    this.target = this.selectedEnvironment();
     this.interval = setInterval(() => { void this.refresh(); }, this.refreshSeconds() * 1000);
     void this.refresh();
   }
@@ -204,17 +199,11 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const includePublicIp = this.config().get('showPublicIp', true);
     const job = (async () => {
       try {
-        const snapshot = this.target === 'remote'
-          ? await this.remoteSupport.query(vscode.env.remoteName!, timeout * 1000, abort.signal, includePublicIp, value => {
-            if (!this.disposed && generation === this.generation) { this.preparingRemote = value; this.render(); }
-          })
-          : await (async () => {
-            const [quota, publicIp] = await Promise.all([queryCodex({
-            cliPath: this.config().get('cliPath', 'codex'),
-            codexHome: this.config().get('codexHome', ''), timeoutMs: timeout * 1000
-            }, abort.signal), includePublicIp ? getPublicIp(abort.signal) : Promise.resolve(undefined)]);
-            return { ...quota, hostIp: hostIpAddress(), publicIp };
-          })();
+        const [quota, publicIp] = await Promise.all([queryCodex({
+          cliPath: this.hostSetting('cliPath', 'codex'),
+          codexHome: this.hostSetting('codexHome', ''), timeoutMs: timeout * 1000
+        }, abort.signal), includePublicIp ? getPublicIp(abort.signal) : Promise.resolve(undefined)]);
+        const snapshot = { ...quota, hostIp: hostIpAddress(), publicIp };
         if (this.disposed || generation !== this.generation) return;
         this.snapshot = snapshot;
         this.error = undefined;
@@ -249,7 +238,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const pending = this.pendingReason();
     let summary = this.t('waiting');
     if (pending) summary = pending;
-    else if (this.loading) summary = `$(sync~spin) ${this.t(this.preparingRemote ? 'preparingRemote' : 'querying')}`;
+    else if (this.loading) summary = `$(sync~spin) ${this.t('querying')}`;
     else if (this.error) summary = `$(warning) ${this.t('failed')}`;
     else if (this.snapshot) {
       summary = this.snapshot.quota ? quotaText(this.snapshot.quota, language)
@@ -257,12 +246,11 @@ class QuotaController implements vscode.Disposable, QuotaApi {
           : `${this.snapshot.account.type === 'apiKey' ? 'API Key' : 'Bedrock'} · ${this.t('noSubscription')}`;
     }
     this.bar.text = `${prefix} ${summary}`;
-    const rawIp = this.snapshot?.hostIp ?? (this.target === 'local' ? hostIpAddress() : '');
+    const rawIp = this.snapshot?.hostIp ?? hostIpAddress();
     const ip = !rawIp || rawIp === '未获取到' ? this.t('notAvailable') : language === 'en' ? rawIp.replace(/、/g, ', ') : rawIp;
     const lines = [this.t('title'), this.t('ip', { value: singleLine(ip) })];
     if (this.config().get('showPublicIp', true)) lines.push(this.t('publicIp', { value: this.snapshot?.publicIp ?? this.t('notAvailable') }));
-    if (pending) lines.push(pending, this.misplacedHost
-      ? this.t('upgradeLocal') : this.target === 'remote' ? this.t('connectRemote') : this.t('trustToQuery'));
+    if (pending) lines.push(pending, this.t('trustToQuery'));
     else if (this.error) lines.push(text(language, this.error), this.t('cleared'));
     else if (this.snapshot) {
       const snapshot = this.snapshot;
@@ -307,20 +295,6 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     if (this.bar.alignment !== alignment) { this.createBar(); this.render(); }
   }
 
-  private async selectEnvironment(): Promise<void> {
-    const selection = await vscode.window.showQuickPick([
-      { label: this.t('local'), description: this.t('localDescription'), target: 'local' as const },
-      { label: this.t('remote'), description: this.t('remoteDescription'), target: 'remote' as const }
-    ], { title: this.t('selectEnvironment'), placeHolder: this.t('currentEnvironment', { value: this.t(this.target) }) });
-    if (!selection) return;
-    if (selection.target === 'remote' && !vscode.env.remoteName) {
-      await vscode.window.showWarningMessage(this.t('remoteWarning'));
-      return;
-    }
-    await this.config().update('executionEnvironment', selection.target, this.settingTarget('executionEnvironment'));
-    await this.manualRefresh();
-  }
-
   private async selectLanguage(): Promise<void> {
     const selection = await vscode.window.showQuickPick([
       { label: this.t('autoLanguage'), language: 'auto' as LanguageSetting },
@@ -354,7 +328,8 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     await this.refresh();
     const lines = [String(this.bar.tooltip ?? '')];
     if (this.snapshot) {
-      lines.push(this.t('source'), this.t('cli', { value: singleLine(this.snapshot.cliPath) }),
+      const host = this.t(this.target) + (this.target === 'remote' ? ` / ${singleLine(vscode.env.remoteName ?? '')}` : '');
+      lines.push(this.t('queryHost', { value: host }), this.t('source'), this.t('cli', { value: singleLine(this.snapshot.cliPath) }),
         this.t('home', { value: singleLine(this.snapshot.codexHome) }), this.t('credentials'));
     }
     await vscode.window.showInformationMessage(lines.join('\n'), { modal: true });
@@ -365,7 +340,6 @@ class QuotaController implements vscode.Disposable, QuotaApi {
       { label: `$(refresh) ${this.t('menuRefresh')}`, command: 'codexQuota.refresh' },
       { label: `$(account) ${this.t('menuAccount')}`, command: 'codexQuota.showAccount' },
       { label: `$(output) ${this.t('menuDiagnostics')}`, command: 'codexQuota.showDiagnostics' },
-      { label: `$(remote) ${this.t('menuEnvironment')}`, command: 'codexQuota.selectEnvironment' },
       { label: `$(arrow-swap) ${this.t('menuPosition')}`, command: 'codexQuota.togglePosition' },
       { label: `$(globe) ${this.t('menuLanguage')}`, command: 'codexQuota.selectLanguage' },
       { label: `$(settings-gear) ${this.t('menuSettings')}`, command: 'settings' }
@@ -386,18 +360,6 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<QuotaApi> {
-  // Migrate only this extension's old host preference; other extensions keep their settings.
-  const remote = vscode.workspace.getConfiguration('remote');
-  const kinds = remote.inspect<ExtensionKinds>('extensionKind')?.globalValue ?? {};
-  if (kinds[context.extension.id]) {
-    const config = vscode.workspace.getConfiguration('codexQuota');
-    const inspected = config.inspect('executionEnvironment');
-    if (inspected?.globalValue === undefined && inspected?.workspaceValue === undefined && inspected?.workspaceFolderValue === undefined) {
-      await config.update('executionEnvironment', selectedTarget(kinds, context.extension.id), vscode.ConfigurationTarget.Global);
-    }
-    const otherKinds = { ...kinds }; delete otherKinds[context.extension.id];
-    await remote.update('extensionKind', otherKinds, vscode.ConfigurationTarget.Global);
-  }
   const controller = new QuotaController(context);
   context.subscriptions.push(controller);
   return controller;

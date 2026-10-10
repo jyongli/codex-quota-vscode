@@ -3,8 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const directory = new URL('../out/test/', import.meta.url);
-const files = (await readdir(directory)).filter(name => name.endsWith('.test.js')).sort()
-  .map(name => fileURLToPath(new URL(name, directory)));
+// Discover current source files so obsolete compiled tests from an earlier
+// checkout cannot run after a test or component has been removed.
+const files = (await readdir(new URL('../test/', import.meta.url))).filter(name => name.endsWith('.test.ts')).sort()
+  .map(name => fileURLToPath(new URL(name.replace(/\.ts$/, '.js'), directory)));
 if (!files.length) throw new Error('No compiled unit tests found.');
 const result = spawnSync(process.execPath, ['--test', '--test-reporter=spec', ...files], {
   encoding: 'utf8', maxBuffer: 2 * 1024 * 1024

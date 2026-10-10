@@ -2,7 +2,7 @@
   "name": "codex-quota-vscode",
   "displayName": "Codex Quota",
   "description": "%main.description%",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "publisher": "jyongli",
   "license": "MIT",
   "repository": {
@@ -23,7 +23,7 @@
   ],
   "main": "./dist/extension.js",
   "extensionKind": [
-    "ui"
+    "workspace"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -48,10 +48,6 @@
         "title": "%refresh%"
       },
       {
-        "command": "codexQuota.selectEnvironment",
-        "title": "%selectEnvironment%"
-      },
-      {
         "command": "codexQuota.togglePosition",
         "title": "%togglePosition%"
       },
@@ -71,16 +67,6 @@
     "configuration": {
       "title": "Codex Quota",
       "properties": {
-        "codexQuota.executionEnvironment": {
-          "type": "string",
-          "enum": [
-            "local",
-            "remote"
-          ],
-          "default": "local",
-          "scope": "window",
-          "description": "%executionEnvironment%"
-        },
         "codexQuota.statusBarPosition": {
           "type": "string",
           "enum": [
@@ -94,26 +80,28 @@
         "codexQuota.cliPath": {
           "type": "string",
           "default": "codex",
-          "scope": "application",
+          "scope": "machine",
           "description": "%cliPath%"
         },
         "codexQuota.codexHome": {
           "type": "string",
           "default": "",
-          "scope": "application",
+          "scope": "machine",
           "description": "%codexHome%"
         },
         "codexQuota.remoteCliPath": {
           "type": "string",
           "default": "codex",
           "scope": "machine",
-          "description": "%remoteCliPath%"
+          "description": "%remoteCliPath%",
+          "deprecationMessage": "%remoteCliPath.deprecated%"
         },
         "codexQuota.remoteCodexHome": {
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "%remoteCodexHome%"
+          "description": "%remoteCodexHome%",
+          "deprecationMessage": "%remoteCodexHome.deprecated%"
         },
         "codexQuota.refreshIntervalSeconds": {
           "type": "integer",

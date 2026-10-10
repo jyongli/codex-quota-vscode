@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseAccount, parseQuota, quotaText, accountText } from '../src/quota';
-import { activeTarget, hostIpAddress, selectedTarget, withTarget } from '../src/environment';
+import { activeTarget, hostIpAddress } from '../src/environment';
 
 const window = (usedPercent: number, windowDurationMins: number | null) => ({ usedPercent, windowDurationMins, resetsAt: 2_000_000_000 });
 
@@ -65,15 +65,6 @@ test('远程连接中的 UI 宿主仍为本地；只有远程 workspace 宿主�
   assert.equal(activeTarget(true, undefined), 'local');
 });
 
-test('环境切换保留其他扩展设置，不修改原对象', () => {
-  const settings = { 'other.extension': ['workspace'] };
-  const changed = withTarget(settings, 'jyongli.codex-quota-vscode', 'remote');
-  assert.deepEqual(changed['other.extension'], ['workspace']);
-  assert.equal(selectedTarget(changed, 'jyongli.codex-quota-vscode'), 'remote');
-  assert.equal(selectedTarget(settings, 'jyongli.codex-quota-vscode'), 'local');
-  assert.equal(selectedTarget(withTarget(changed, 'jyongli.codex-quota-vscode', 'local'), 'jyongli.codex-quota-vscode'), 'local');
-  assert.deepEqual(settings, { 'other.extension': ['workspace'] });
-});
 
 test('宿主 IP 排除回环，优先 IPv4，多网卡去重且兼容数字 family', () => {
   assert.equal(hostIpAddress({

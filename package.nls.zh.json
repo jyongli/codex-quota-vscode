@@ -1,17 +1,15 @@
 {
-  "main.description": "查看所选本地或远程 Codex CLI 账号的 5 小时与周剩余额度。",
-  "main.trust": "额度查询需要执行当前宿主中的 Codex CLI。",
+  "main.description": "显示插件安装环境中 Codex CLI 账号的 5 小时与周剩余额度的 VS Code 插件。",
+  "main.trust": "额度查询需要执行插件实际运行机器上的 Codex CLI。",
   "menu": "Codex Quota: 打开菜单",
   "refresh": "Codex Quota: 刷新额度",
-  "selectEnvironment": "Codex Quota: 选择本地／远程环境",
   "togglePosition": "Codex Quota: 切换状态栏左右位置",
   "showAccount": "Codex Quota: 查看账号与额度来源",
   "showDiagnostics": "Codex Quota: 查看诊断日志",
   "selectLanguage": "Codex Quota: 选择显示语言",
-  "executionEnvironment": "额度查询环境，切换立即生效；首次远程查询自动安装包内的查询支持，无须另行下载。",
   "statusBarPosition": "状态栏位置；更改后立即生效。",
-  "cliPath": "本机 Codex 可执行文件路径（或官方 npm CLI 的 .js 入口）；在本地用户设置配置，不接受 shell 命令。",
-  "codexHome": "本机 Codex 配置目录，留空继承本机 CODEX_HOME，否则使用 ~/.codex。支持 ~/。插件不读取凭据文件。",
+  "cliPath": "当前安装环境的 Codex 可执行文件路径（或官方 npm CLI 的 .js 入口）；本地在用户设置、远程在远程用户设置中配置，不接受 shell 命令。",
+  "codexHome": "当前安装环境的 Codex 配置目录，留空继承该机器的 CODEX_HOME 或 ~/.codex。支持 ~/。插件不读取凭据文件。",
   "remoteCliPath": "远程宿主的 Codex CLI 路径；在远程用户设置配置，不接受 shell 命令。",
   "remoteCodexHome": "远程宿主的 Codex 配置目录，留空继承远程 CODEX_HOME，否则使用远程 ~/.codex。支持 ~/。",
   "refreshIntervalSeconds": "自动刷新间隔（秒）。",
@@ -20,5 +18,7 @@
   "language.auto": "跟随 VS Code 显示语言。",
   "language.zh-CN": "中文。",
   "language.en": "英文。",
-  "showPublicIp": "通过 HTTPS ipify 显示实际查询宿主的公网出口 IP，缓存 5 分钟；获取失败不影响额度查询。"
+  "showPublicIp": "通过 HTTPS ipify 显示插件实际运行机器的公网出口 IP，缓存 5 分钟；获取失败不影响额度查询。",
+  "remoteCliPath.deprecated": "请改用远程用户设置中的 codexQuota.cliPath；尚未配置新键时仍兼容此旧设置。",
+  "remoteCodexHome.deprecated": "请改用远程用户设置中的 codexQuota.codexHome；尚未配置新键时仍兼容此旧设置。"
 }

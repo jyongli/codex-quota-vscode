@@ -4,10 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { QuotaApi } from '../../src/extension';
-import { REMOTE_PROTOCOL, REMOTE_QUERY, RemoteReply } from '../../src/remoteProtocol';
-import { randomUUID } from 'node:crypto';
 import { ReadableStream } from 'node:stream/web';
-import { RemoteSupport } from '../../src/remoteSupport';
 
 async function chooseLanguage(index: number): Promise<void> {
   const command = vscode.commands.executeCommand('codexQuota.selectLanguage');
@@ -23,7 +20,7 @@ async function chooseLanguage(index: number): Promise<void> {
 export async function run(): Promise<void> {
   const home = await mkdtemp(path.join(tmpdir(), 'codex-quota-vscode-'));
   const config = vscode.workspace.getConfiguration('codexQuota');
-  const previous = Object.fromEntries(['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'statusBarPosition', 'executionEnvironment', 'language', 'showPublicIp'].map(key => [key, config.inspect(key)?.globalValue]));
+  const previous = Object.fromEntries(['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'statusBarPosition', 'language', 'showPublicIp'].map(key => [key, config.inspect(key)?.globalValue]));
   try {
     await config.update('language', 'zh-CN', vscode.ConfigurationTarget.Global);
     await config.update('showPublicIp', false, vscode.ConfigurationTarget.Global);
@@ -32,10 +29,18 @@ export async function run(): Promise<void> {
     await config.update('codexHome', home, vscode.ConfigurationTarget.Global);
     await config.update('statusBarPosition', 'right', vscode.ConfigurationTarget.Global);
     await config.update('statusBarPosition', 'right', vscode.ConfigurationTarget.Workspace);
-    await config.update('executionEnvironment', 'local', vscode.ConfigurationTarget.Global);
     const extension = vscode.extensions.getExtension<QuotaApi>('jyongli.codex-quota-vscode');
     assert.ok(extension, 'extension must be discovered');
+    // The API reports UI for a local process even when the manifest prefers
+    // the workspace host; Workspace means it is executing remotely.
+    assert.equal(extension.extensionKind, vscode.ExtensionKind.UI);
+    assert.deepEqual(extension.packageJSON.extensionKind, ['workspace']);
+    assert.equal(extension.packageJSON.contributes.configuration.properties['codexQuota.cliPath'].scope, 'machine');
     const api = await extension.activate();
+    assert.equal(api.getState().target, 'local');
+    assert.ok(!(await vscode.commands.getCommands(true)).includes('codexQuota.selectEnvironment'));
+    assert.equal(vscode.extensions.getExtension('jyongli.codex-quota-remote'), undefined);
+    console.log('PASS: one workspace extension uses its installed host; no environment selector or companion');
     await api.refresh();
     assert.equal(api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
     assert.match(api.getState().tooltip, /fixture@example.test/);
@@ -122,42 +127,14 @@ export async function run(): Promise<void> {
     await config.update('language', 'zh-CN', vscode.ConfigurationTarget.Global);
     await new Promise(resolve => setTimeout(resolve, 100));
     console.log('PASS: startup failure diagnostics and output command in the real VS Code host');
-    const remoteHome = path.join(home, 'remote account');
-    await mkdir(remoteHome);
-    await writeFile(path.join(remoteHome, 'scenario.json'), JSON.stringify({ account: { type: 'chatgpt', email: 'provider@example.test', planType: 'pro' } }));
-    await config.update('remoteCliPath', path.resolve(__dirname, '../../../test/fixtures/codex.cjs'), vscode.ConfigurationTarget.Global);
-    await config.update('remoteCodexHome', remoteHome, vscode.ConfigurationTarget.Global);
-    assert.equal(vscode.extensions.getExtension('jyongli.codex-quota-remote'), undefined, 'the helper must not be preinstalled or a development extension');
-    await new RemoteSupport((command, argument) => vscode.commands.executeCommand(command, argument),
-      vscode.Uri.joinPath(extension.extensionUri, 'bundled', 'remote.vsix')).install();
-    console.log('PASS: VS Code installs and loads the embedded remote component without restarting the window');
-    assert.ok(vscode.extensions.getExtension('jyongli.codex-quota-remote'), 'remote companion must be discovered');
-    const oldReply = await vscode.commands.executeCommand<RemoteReply>(REMOTE_QUERY, { protocol: 1, requestId: randomUUID(), timeoutMs: 5000 });
-    assert.equal(oldReply.ok, false, 'old clients must not query using the changed settings contract');
-    const originalRemoteFetch = globalThis.fetch;
-    let failedPublicIpCalls = 0;
-    globalThis.fetch = async () => { failedPublicIpCalls++; throw new Error('IP service unavailable'); };
-    let reply: RemoteReply;
-    try {
-      reply = await vscode.commands.executeCommand<RemoteReply>(REMOTE_QUERY, { protocol: REMOTE_PROTOCOL, requestId: randomUUID(), timeoutMs: 5000, includePublicIp: true });
-    } finally { globalThis.fetch = originalRemoteFetch; }
-    assert.equal(failedPublicIpCalls, 1);
-    assert.equal(reply.protocol, REMOTE_PROTOCOL);
-    assert.equal(reply.ok, true, reply.ok ? '' : reply.message);
-    assert.equal(reply.remoteName, vscode.env.remoteName ?? null);
-    assert.ok(reply.hostIp);
-    if (reply.ok) {
-      assert.equal(reply.snapshot.publicIp, undefined, 'public IP failure must preserve a successful quota query');
-      assert.equal(reply.snapshot.account.type, 'chatgpt');
-      assert.equal(reply.snapshot.codexHome, remoteHome);
-      assert.deepEqual(reply.snapshot.account, { type: 'chatgpt', email: 'provider@example.test', planType: 'pro' });
-      assert.equal(typeof reply.snapshot.checkedAt, 'string');
-    }
     await writeFile(path.join(home, 'scenario.json'), '{}');
-    await vscode.commands.executeCommand('codexQuota.refresh');
+    await config.update('remoteCliPath', 'missing-legacy-cli', vscode.ConfigurationTarget.Global);
+    await config.update('remoteCodexHome', path.join(home, 'unused legacy directory'), vscode.ConfigurationTarget.Global);
+    await api.refresh();
     assert.match(api.getState().tooltip, /fixture@example.test/);
     assert.equal(api.getState().snapshot?.codexHome, home);
-    console.log('PASS: paired extensions isolate accounts; public IP lookup failure preserves remote quota');
+    assert.equal(vscode.extensions.getExtension('jyongli.codex-quota-remote'), undefined);
+    console.log('PASS: the installed local extension queries its own CLI and ignores legacy remote settings');
     if (process.env.CODEX_QUOTA_NATIVE_CLI) {
       const nativeHome = path.join(home, 'native home 中文 with spaces');
       await mkdir(nativeHome);

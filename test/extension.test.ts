@@ -108,28 +108,6 @@ moduleLoader._load = function(request, parent, isMain) {
 };
 const extensionModule = process.env.CODEX_QUOTA_TEST_BUNDLE ? '../../dist/extension.js' : '../src/extension';
 const { activate } = require(extensionModule) as typeof import('../src/extension');
-const remoteMock = {
-  env, ExtensionKind: mock.ExtensionKind,
-  workspace: {
-    get isTrusted() { return workspace.isTrusted; },
-    // VS Code supplies the same merged configuration to both extension hosts.
-    getConfiguration() { return workspace.getConfiguration('codexQuota'); }
-  },
-  commands: {
-    registerCommand(name: string, action: (...args: unknown[]) => unknown) {
-      state.commands.set(name, async (...args) => {
-        const result = await action(...args);
-        return result === undefined ? undefined : JSON.parse(JSON.stringify(result));
-      });
-      return { dispose() { state.commands.delete(name); } };
-    }
-  }
-};
-moduleLoader._load = function(request, parent, isMain) {
-  return request === 'vscode' ? remoteMock : originalLoad.call(this, request, parent, isMain);
-};
-const remoteModule = process.env.CODEX_QUOTA_TEST_BUNDLE ? '../../remote-provider/dist/remote.js' : '../src/remote';
-const { activate: activateRemote } = require(remoteModule) as typeof import('../src/remote');
 moduleLoader._load = originalLoad;
 
 function fire(changed: string): void {
@@ -137,14 +115,13 @@ function fire(changed: string): void {
 }
 
 async function harness(scenario: unknown, options: {
-  remoteName?: string; workspaceHost?: boolean; remoteSelected?: boolean; trusted?: boolean;
-  provider?: boolean; providerUi?: boolean; remoteScenario?: unknown; workspacePosition?: string; legacyKinds?: boolean; language?: LanguageSetting; vscodeLanguage?: string; workspaceLanguage?: LanguageSetting; publicIp?: boolean;
+  remoteName?: string; workspaceHost?: boolean; trusted?: boolean; legacyRemote?: boolean; workspacePosition?: string; legacyKinds?: boolean; language?: LanguageSetting; vscodeLanguage?: string; workspaceLanguage?: LanguageSetting; publicIp?: boolean;
   globalPreferences?: Record<string, unknown>; workspacePreferences?: Record<string, unknown>;
-} = {}): Promise<{ api: QuotaApi; home: string; remoteHome?: string; dispose(): Promise<void> }> {
+} = {}): Promise<{ api: QuotaApi; home: string; dispose(): Promise<void> }> {
   const home = await scenarioHome(scenario);
   state = {
     settings: { language: options.language ?? 'auto', showPublicIp: options.publicIp ?? false, cliPath: fixtureCli, codexHome: home, statusBarPosition: 'right', requestTimeoutSeconds: 5,
-      ...(options.remoteSelected ? { executionEnvironment: 'remote' } : {}) },
+      ...(options.legacyRemote ? { cliPath: undefined, codexHome: undefined, remoteCliPath: fixtureCli, remoteCodexHome: home } : {}) },
     workspaceValues: { ...(options.workspacePosition ? { statusBarPosition: options.workspacePosition } : {}), ...(options.workspaceLanguage ? { language: options.workspaceLanguage } : {}) }, updates: [],
     kinds: options.legacyKinds ? { 'other.extension': ['ui'], 'jyongli.codex-quota-vscode': ['workspace'] } : {},
     listeners: new Set(), commands: new Map(), bars: [], messages: [], errors: [],
@@ -155,13 +132,6 @@ async function harness(scenario: unknown, options: {
   env.language = options.vscodeLanguage ?? 'zh-cn';
   workspace.isTrusted = options.trusted ?? true;
   const subscriptions: VSCode.Disposable[] = [];
-  const remoteSubscriptions: VSCode.Disposable[] = [];
-  const remoteHome = options.provider ? await scenarioHome(options.remoteScenario ?? { account: { type: 'chatgpt', email: 'remote@example.test', planType: 'pro' } }) : undefined;
-  if (remoteHome) {
-    state.settings.remoteCliPath = fixtureCli;
-    state.settings.remoteCodexHome = remoteHome;
-    activateRemote({ extension: { extensionKind: options.providerUi ? 1 : 2 }, subscriptions: remoteSubscriptions } as unknown as VSCode.ExtensionContext);
-  }
   const api = await activate({
     globalState: {
       get(key: string) { return state.globalPreferences[key]; },
@@ -172,12 +142,12 @@ async function harness(scenario: unknown, options: {
       async update(key: string, value: unknown) { if (state.storageError) throw state.storageError; if (value === undefined) delete state.workspacePreferences[key]; else state.workspacePreferences[key] = value; }
     },
     extensionUri: { fsPath: path.resolve(__dirname, '../..') },
-    extension: { id: 'jyongli.codex-quota-vscode', extensionKind: options.workspaceHost ? 2 : 1 },
+    extension: { id: 'jyongli.codex-quota-vscode', extensionKind: (options.workspaceHost ?? !!options.remoteName) ? 2 : 1 },
     globalStorageUri: { fsPath: path.join(home, 'runtime') }, subscriptions
   } as unknown as VSCode.ExtensionContext);
-  return { api, home, remoteHome, async dispose() {
-    for (const subscription of [...subscriptions, ...remoteSubscriptions]) subscription.dispose();
-    await cleanup(home); if (remoteHome) await cleanup(remoteHome);
+  return { api, home, async dispose() {
+    for (const subscription of subscriptions) subscription.dispose();
+    await cleanup(home);
   } };
 }
 
@@ -185,7 +155,7 @@ test('扩展激活、命令注册、状态栏、账号来源与即时左右切�
   const h = await harness({});
   try {
     await h.api.refresh();
-    assert.equal(state.commands.size, 7);
+    assert.equal(state.commands.size, 6);
     assert.equal(h.api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
     assert.match(h.api.getState().tooltip, /fixture@example.test/);
     assert.ok(h.api.getState().tooltip.includes(`IP 地址：${hostIpAddress()}`));
@@ -269,56 +239,8 @@ test('并发刷新合并为一个 CLI 查询', async () => {
   } finally { await h.dispose(); }
 });
 
-test('本地／远程即时切换读取各自账号，不重载、不改扩展宿主设置', async () => {
-  const h = await harness({}, { remoteName: 'ssh-remote', provider: true });
-  try {
-    await h.api.refresh();
-    assert.equal(h.api.getState().target, 'local');
-    state.kinds = { 'other.extension': ['ui'] };
-    state.choice = { target: 'remote', label: '远程' };
-    await mock.commands.executeCommand('codexQuota.selectEnvironment');
-    assert.deepEqual(state.kinds, { 'other.extension': ['ui'] });
-    assert.equal(h.api.getState().target, 'remote');
-    assert.match(h.api.getState().tooltip, /remote@example.test/);
-    assert.equal(h.api.getState().snapshot?.codexHome, h.remoteHome);
-    assert.equal((await readTrace(h.home)).filter(row => row.method === 'account/rateLimits/read').length, 1);
-    state.choice = { target: 'local', label: '本地' };
-    await mock.commands.executeCommand('codexQuota.selectEnvironment');
-    assert.equal(h.api.getState().target, 'local');
-    assert.match(h.api.getState().tooltip, /fixture@example.test/);
-    assert.equal(state.reloads, 0);
-    assert.ok(!state.messages.some(message => message.includes('重载')));
-  } finally { await h.dispose(); }
-});
 
-test('远程查询组件使用其自身的 CLI 配置，不读取本机账号', async () => {
-  const h = await harness({}, { remoteName: 'ssh-remote', provider: true, remoteSelected: true });
-  try {
-    await h.api.refresh();
-    assert.equal(h.api.getState().target, 'remote');
-    assert.match(h.api.getState().text, /Codex \[远程\].*75%/);
-    assert.ok(h.api.getState().tooltip.includes(`IP 地址：${hostIpAddress()}`));
-    assert.doesNotMatch(h.api.getState().tooltip, /实际执行环境：/);
-    assert.match(h.api.getState().tooltip, /remote@example.test/);
-    await assert.rejects(readTrace(h.home), { code: 'ENOENT' });
-  } finally { await h.dispose(); }
-});
 
-test('未连接远程时不写远程选择；已选择远程时不悄悄查询本地', async () => {
-  const h = await harness({});
-  try {
-    await h.api.refresh();
-    state.choice = { target: 'remote', label: '远程' };
-    await mock.commands.executeCommand('codexQuota.selectEnvironment');
-    assert.deepEqual(state.kinds, {});
-    assert.match(state.messages[0], /先连接/);
-    state.settings.executionEnvironment = 'remote';
-    fire('codexQuota.executionEnvironment');
-    await h.api.refresh();
-    assert.match(h.api.getState().text, /未连接远程/);
-    assert.equal(h.api.getState().snapshot, undefined);
-  } finally { await h.dispose(); }
-});
 
 test('工作区覆盖位置设置时，切换更新生效层并立即改变状态栏', async () => {
   const h = await harness({}, { workspacePosition: 'right' });
@@ -336,71 +258,9 @@ test('工作区覆盖位置设置时，切换更新生效层并立即改变状�
   } finally { await h.dispose(); }
 });
 
-test('远程组件缺失时清除本地额度，不将本机结果伪装为远程', async () => {
-  const h = await harness({}, { remoteName: 'ssh-remote' });
-  try {
-    await h.api.refresh();
-    state.choice = { target: 'remote', label: '远程' };
-    await mock.commands.executeCommand('codexQuota.selectEnvironment');
-    assert.equal(h.api.getState().snapshot, undefined);
-    assert.match(h.api.getState().tooltip, /远程查询组件/);
-    assert.match(h.api.getState().tooltip, /IP 地址：未获取到/);
-    assert.equal(state.reloads, 0);
-    assert.equal(state.installs.length, 1);
-    state.choice = { language: 'en', label: 'English' };
-    await mock.commands.executeCommand('codexQuota.selectLanguage');
-    assert.match(h.api.getState().tooltip, /Could not install the bundled remote component/);
-    assert.doesNotMatch(h.api.getState().tooltip, /SENSITIVE_MOCK_TOKEN/);
-  } finally { await h.dispose(); }
-});
 
-test('远程窗口中错误装在 UI 宿主的查询组件不读取本机账号', async () => {
-  const h = await harness({}, { remoteName: 'ssh-remote', provider: true, providerUi: true, remoteSelected: true });
-  try {
-    await h.api.refresh();
-    assert.equal(h.api.getState().snapshot, undefined);
-    assert.match(h.api.getState().tooltip, /工作区宿主/);
-    await assert.rejects(readTrace(h.remoteHome!), { code: 'ENOENT' });
-    await assert.rejects(readTrace(h.home), { code: 'ENOENT' });
-  } finally { await h.dispose(); }
-});
 
-test('远程查询期间切回本地取消远程进程，晚到结果不会覆盖本地账号', async () => {
-  const h = await harness({}, { remoteName: 'ssh-remote', provider: true, remoteScenario: { delay: 1000, account: { type: 'chatgpt', email: 'remote@example.test', planType: 'pro' } } });
-  try {
-    await h.api.refresh();
-    state.choice = { target: 'remote', label: '远程' };
-    const remoteQuery = mock.commands.executeCommand('codexQuota.selectEnvironment');
-    let pid: number | undefined;
-    for (let attempt = 0; attempt < 100; attempt++) {
-      try {
-        const trace = await readTrace(h.remoteHome!);
-        if (trace.some(row => row.method === 'account/rateLimits/read')) { pid = trace[0].pid as number; break; }
-      } catch { /* Wait for the independent remote protocol peer to start. */ }
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
-    assert.ok(pid, 'remote quota request must be active');
-    state.choice = { target: 'local', label: '本地' };
-    await mock.commands.executeCommand('codexQuota.selectEnvironment');
-    await remoteQuery;
-    assert.equal(h.api.getState().target, 'local');
-    assert.match(h.api.getState().tooltip, /fixture@example.test/);
-    assert.doesNotMatch(h.api.getState().tooltip, /remote@example.test/);
-    assert.equal(state.reloads, 0);
-    assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
-  } finally { await h.dispose(); }
-});
 
-test('升级迁移旧宿主设置，仅移除本插件的旧覆盖并保留其他插件', async () => {
-  const h = await harness({}, { remoteName: 'ssh-remote', provider: true, legacyKinds: true });
-  try {
-    await h.api.refresh();
-    assert.deepEqual(state.kinds, { 'other.extension': ['ui'] });
-    assert.equal(state.settings.executionEnvironment, 'remote');
-    assert.match(h.api.getState().tooltip, /remote@example.test/);
-    assert.equal(state.reloads, 0);
-  } finally { await h.dispose(); }
-});
 
 test('CLI 配置变化取消旧请求，新账号来源不会被旧响应覆盖', async () => {
   const h = await harness({ delay: 800 });
@@ -578,33 +438,103 @@ test('设置和插件存储均写入失败时仍切换当前窗口语言，保�
   } finally { await h.dispose(); }
 });
 
-test('远程错误经过 JSON 通道后可按本地显示语言切换，不重新查询远程 CLI', async () => {
-  const h = await harness({}, { remoteName: 'ssh-remote', provider: true, remoteSelected: true, language: 'en', remoteScenario: {
-    exitMethod: 'initialize', stderr: 'TOML parse error SENSITIVE_MOCK_TOKEN'
-  } });
+
+
+
+
+
+test('同一个扩展在本地和 SSH／WSL／容器／Codespaces 宿主读取各自的 CLI 账号', async () => {
+  const unrelated = await scenarioHome({ account: { type: 'chatgpt', email: 'unrelated@example.test', planType: 'plus' } });
+  try {
+    for (const remoteName of [undefined, 'ssh-remote', 'wsl', 'dev-container', 'codespaces']) {
+      const email = remoteName ? `${remoteName}@example.test` : 'local@example.test';
+      const h = await harness({ account: { type: 'chatgpt', email, planType: 'pro' } }, { remoteName });
+      try {
+        await h.api.refresh();
+        assert.equal(h.api.getState().target, remoteName ? 'remote' : 'local');
+        assert.match(h.api.getState().text, remoteName ? /Codex \[远程\]/ : /Codex \[本地\]/);
+        assert.ok(h.api.getState().tooltip.includes(email));
+        assert.equal(h.api.getState().snapshot?.codexHome, h.home);
+        assert.ok((await readTrace(h.home)).some(row => row.method === 'account/rateLimits/read'));
+        await assert.rejects(readTrace(unrelated), { code: 'ENOENT' });
+        assert.equal(state.installs.length, 0);
+        assert.equal(state.reloads, 0);
+        assert.ok(!state.commands.has('codexQuota.selectEnvironment'));
+        await mock.commands.executeCommand('codexQuota.menu');
+        assert.ok(!state.picks.at(-1)?.some(item => item.label.includes('选择本地')));
+        await mock.commands.executeCommand('codexQuota.showAccount');
+        assert.match(state.messages.at(-1)!, remoteName ? /查询宿主：远程/ : /查询宿主：本地/);
+        if (remoteName) assert.ok(state.messages.at(-1)!.includes(remoteName));
+      } finally { await h.dispose(); }
+    }
+  } finally { await cleanup(unrelated); }
+});
+
+test('旧环境选择不改变实际宿主，不写用户的扩展宿主覆盖配置', async () => {
+  const h = await harness({}, { legacyKinds: true });
   try {
     await h.api.refresh();
-    assert.match(h.api.getState().tooltip, /CLI startup and initialization.*exit code 4.*configuration/);
-    const trace = await readTrace(h.remoteHome!);
-    state.choice = { language: 'zh-CN', label: '中文' };
-    await mock.commands.executeCommand('codexQuota.selectLanguage');
-    assert.match(h.api.getState().tooltip, /启动并初始化 CLI.*退出码 4.*配置/);
-    assert.deepEqual(await readTrace(h.remoteHome!), trace);
-    await assert.rejects(readTrace(h.home), { code: 'ENOENT' });
+    const snapshot = h.api.getState().snapshot;
+    const trace = await readTrace(h.home);
+    state.settings.executionEnvironment = 'remote'; fire('codexQuota.executionEnvironment');
+    await h.api.refresh();
+    assert.equal(h.api.getState().target, 'local');
+    assert.deepEqual(state.kinds, { 'other.extension': ['ui'], 'jyongli.codex-quota-vscode': ['workspace'] });
+    assert.equal(state.updates.length, 0);
+    assert.equal(snapshot?.codexHome, h.home);
+    assert.equal((await readTrace(h.home)).length, trace.length * 2);
   } finally { await h.dispose(); }
 });
 
-test('公网 IP 由查询宿主返回，显示开关停止请求且语言切换保留地址', async () => {
+test('升级兼容旧远程路径，新机器级设置优先；本地从不使用旧远程路径', async () => {
+  const otherHome = await scenarioHome({ account: { type: 'chatgpt', email: 'other@example.test', planType: 'pro' } });
+  const h = await harness({ account: { type: 'chatgpt', email: 'legacy@example.test', planType: 'plus' } }, { remoteName: 'ssh-remote', legacyRemote: true });
+  try {
+    await h.api.refresh();
+    assert.match(h.api.getState().tooltip, /legacy@example.test/);
+    state.settings.cliPath = fixtureCli; state.settings.codexHome = otherHome; fire('codexQuota.codexHome');
+    await h.api.refresh();
+    assert.match(h.api.getState().tooltip, /other@example.test/);
+    assert.equal(state.settings.remoteCodexHome, h.home);
+  } finally { await h.dispose(); }
+  const local = await harness({});
+  try {
+    state.settings.remoteCliPath = 'missing-remote-cli'; state.settings.remoteCodexHome = otherHome;
+    await local.api.refresh();
+    assert.match(local.api.getState().tooltip, /fixture@example.test/);
+    assert.equal(local.api.getState().snapshot?.codexHome, local.home);
+  } finally { await local.dispose(); await cleanup(otherHome); }
+});
+
+test('远程宿主失败时提供本机诊断，语言切换不重新查询；不退回本地账号', async () => {
+  const h = await harness({ exitMethod: 'initialize', stderr: 'TOML parse error SENSITIVE_MOCK_TOKEN' }, { remoteName: 'ssh-remote', language: 'en' });
+  try {
+    await h.api.refresh();
+    assert.equal(h.api.getState().target, 'remote');
+    assert.equal(h.api.getState().snapshot, undefined);
+    assert.match(h.api.getState().tooltip, /CLI startup and initialization.*exit code 4.*configuration/);
+    assert.match(h.api.getState().text, /Codex \[Remote\]/);
+    const trace = await readTrace(h.home);
+    state.choice = { language: 'zh-CN', label: '中文' };
+    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    assert.match(h.api.getState().tooltip, /启动并初始化 CLI.*退出码 4.*配置/);
+    assert.deepEqual(await readTrace(h.home), trace);
+    assert.doesNotMatch(state.output.lines.join('\n'), /SENSITIVE_MOCK_TOKEN/);
+    assert.equal(state.installs.length, 0);
+  } finally { await h.dispose(); }
+});
+
+test('公网 IP 在实际宿主查询，显示开关停止请求且语言切换保留地址', async () => {
   const originalFetch = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = async () => { calls++; return new Response('203.0.113.42'); };
-  const h = await harness({}, { publicIp: true, remoteName: 'ssh-remote', provider: true, remoteSelected: true });
+  const h = await harness({}, { publicIp: true, remoteName: 'ssh-remote' });
   try {
     await h.api.refresh();
     assert.ok(calls > 0);
     assert.equal(h.api.getState().snapshot?.publicIp, '203.0.113.42');
     assert.match(h.api.getState().tooltip, /IP 地址：.+\n公网 IP：203\.0\.113\.42/);
-    await assert.rejects(readTrace(h.home), { code: 'ENOENT' });
+    assert.equal(h.api.getState().snapshot?.codexHome, h.home);
     state.choice = { language: 'en', label: 'English' };
     await mock.commands.executeCommand('codexQuota.selectLanguage');
     assert.match(h.api.getState().tooltip, /Public IP: 203\.0\.113\.42/);
@@ -613,55 +543,6 @@ test('公网 IP 由查询宿主返回，显示开关停止请求且语言切换�
     await h.api.refresh();
     assert.doesNotMatch(h.api.getState().tooltip, /Public IP:/);
     assert.equal(calls, before);
-    state.choice = { target: 'local', label: 'Local' };
-    await mock.commands.executeCommand('codexQuota.selectEnvironment');
-    assert.equal(calls, before);
-    assert.match(h.api.getState().tooltip, /fixture@example.test/);
+    assert.equal(state.installs.length, 0);
   } finally { await h.dispose(); globalThis.fetch = originalFetch; }
-});
-
-test('只装主插件时，选择远程自动安装包内组件，不重载或更改本地账号', async () => {
-  const h = await harness({}, { remoteName: 'ssh-remote' });
-  const remoteHome = await scenarioHome({ account: { type: 'chatgpt', email: 'embedded@example.test', planType: 'pro' } });
-  const subscriptions: VSCode.Disposable[] = [];
-  try {
-    await h.api.refresh();
-    state.install = async () => {
-      assert.match(h.api.getState().text, /正在准备远程查询/);
-      state.settings.remoteCliPath = fixtureCli; state.settings.remoteCodexHome = remoteHome;
-      activateRemote({ extension: { extensionKind: 2 }, subscriptions } as unknown as VSCode.ExtensionContext);
-    };
-    state.choice = { target: 'remote', label: '远程' };
-    await mock.commands.executeCommand('codexQuota.selectEnvironment');
-    assert.match(h.api.getState().tooltip, /embedded@example.test/);
-    assert.equal(state.installs.length, 1);
-    assert.deepEqual(state.installs[0], { fsPath: path.resolve(__dirname, '../../bundled/remote.vsix') });
-    await h.api.refresh(); assert.equal(state.installs.length, 1);
-    state.choice = { target: 'local', label: '本地' };
-    await mock.commands.executeCommand('codexQuota.selectEnvironment');
-    assert.match(h.api.getState().tooltip, /fixture@example.test/);
-    assert.equal(state.reloads, 0);
-  } finally { for (const subscription of subscriptions) subscription.dispose(); await h.dispose(); await cleanup(remoteHome); }
-});
-
-test('安装远程支持期间切回本地立即结束等待，晚到安装不会覆盖当前账号', async () => {
-  const h = await harness({}, { remoteName: 'ssh-remote' });
-  let complete!: () => void;
-  try {
-    await h.api.refresh();
-    state.install = () => new Promise<void>(resolve => { complete = resolve; });
-    state.choice = { target: 'remote', label: '远程' };
-    const pending = mock.commands.executeCommand('codexQuota.selectEnvironment');
-    for (let attempt = 0; attempt < 100 && !complete; attempt++) await new Promise(resolve => setImmediate(resolve));
-    assert.ok(complete, 'installation must start');
-    state.choice = { target: 'local', label: '本地' };
-    await mock.commands.executeCommand('codexQuota.selectEnvironment'); await pending;
-    assert.match(h.api.getState().tooltip, /fixture@example.test/);
-    state.commands.set('codexQuota.remote.ready', () => ({ protocol: 3, ready: true }));
-    state.commands.set('codexQuota.remote.query', () => { throw new Error('Must not query after cancellation'); });
-    complete(); await new Promise(resolve => setImmediate(resolve));
-    assert.equal(h.api.getState().target, 'local');
-    assert.equal(state.errors.length, 0);
-    assert.equal(state.reloads, 0);
-  } finally { await h.dispose(); }
 });
