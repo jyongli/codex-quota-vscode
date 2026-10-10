@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const home = process.env.CODEX_HOME;
 const scenario = JSON.parse(fs.readFileSync(path.join(home, 'scenario.json'), 'utf8'));
 const trace = path.join(home, 'trace.jsonl');
-fs.appendFileSync(trace, JSON.stringify({ pid: process.pid, args: process.argv.slice(2) }) + '\n');
+fs.appendFileSync(trace, JSON.stringify({ pid: process.pid, args: process.argv.slice(2), electronRunAsNode: process.env.ELECTRON_RUN_AS_NODE }) + '\n');
 let initialized = false;
 let accountReads = 0;
 const defaultAccount = { type: 'chatgpt', email: 'fixture@example.test', planType: 'plus' };
@@ -25,7 +25,10 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   fs.appendFileSync(trace, JSON.stringify(request) + '\n');
   if (request.method === 'initialized') { initialized = true; return; }
   if (scenario.hang || scenario.hangMethod === request.method) return;
-  if (scenario.exit) { process.exit(4); }
+  if (scenario.exit || scenario.exitMethod === request.method) {
+    process.stderr.write(scenario.stderr ?? '', () => process.exit(4));
+    return;
+  }
   if (scenario.malformed) { process.stdout.write('not-json\n'); return; }
   if (scenario.huge) { process.stdout.write('x'.repeat(2_000_000)); return; }
   if (request.method === 'initialize') {

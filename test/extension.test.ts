@@ -19,6 +19,9 @@ interface MockState {
   commands: Map<string, () => unknown>;
   bars: Bar[];
   messages: string[];
+  errors: string[];
+  output: { lines: string[]; shown: number; disposed: boolean };
+  errorAction?: string;
   choice?: { target: 'local' | 'remote'; label: string };
   reloads: number;
 }
@@ -44,6 +47,14 @@ const workspace = {
 const mock = {
   env, workspace, ExtensionKind: { UI: 1, Workspace: 2 }, StatusBarAlignment: { Left: 1, Right: 2 }, ConfigurationTarget: { Global: 1 },
   window: {
+    createOutputChannel() {
+      const output = state.output;
+      return {
+        appendLine(line: string) { output.lines.push(line); },
+        show() { output.shown++; },
+        dispose() { output.disposed = true; }
+      };
+    },
     createStatusBarItem(_id: string, alignment: number) {
       const bar: Bar = { text: '', tooltip: '', alignment, disposed: false, show() {}, dispose() { this.disposed = true; } };
       state.bars.push(bar);
@@ -52,7 +63,10 @@ const mock = {
     async showQuickPick() { const result = state.choice; state.choice = undefined; return result; },
     async showInformationMessage(message: string) { state.messages.push(message); return undefined; },
     async showWarningMessage(message: string) { state.messages.push(message); return undefined; },
-    async showErrorMessage(message: string) { state.messages.push(message); return undefined; }
+    async showErrorMessage(message: string) {
+      state.messages.push(message); state.errors.push(message);
+      const action = state.errorAction; state.errorAction = undefined; return action;
+    }
   },
   commands: {
     registerCommand(name: string, action: () => unknown) { state.commands.set(name, action); return { dispose() { state.commands.delete(name); } }; },
@@ -81,7 +95,8 @@ async function harness(scenario: unknown, options: { remoteName?: string; worksp
   state = {
     settings: { cliPath: fixtureCli, codexHome: home, statusBarPosition: 'right', requestTimeoutSeconds: 5 },
     kinds: options.remoteSelected ? { 'jyongli.codex-quota-vscode': ['workspace'] } : {},
-    listeners: new Set(), commands: new Map(), bars: [], messages: [], reloads: 0
+    listeners: new Set(), commands: new Map(), bars: [], messages: [], errors: [],
+    output: { lines: [], shown: 0, disposed: false }, reloads: 0
   };
   env.remoteName = options.remoteName;
   workspace.isTrusted = options.trusted ?? true;
@@ -97,7 +112,7 @@ test('扩展激活、命令注册、状态栏、账号来源与即时左右切�
   const h = await harness({});
   try {
     await h.api.refresh();
-    assert.equal(state.commands.size, 5);
+    assert.equal(state.commands.size, 6);
     assert.equal(h.api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
     assert.match(h.api.getState().tooltip, /fixture@example.test/);
     assert.match(h.api.getState().tooltip, /不是 VS Code 的 GitHub 账号/);
@@ -113,6 +128,7 @@ test('扩展激活、命令注册、状态栏、账号来源与即时左右切�
   } finally { await h.dispose(); }
   assert.equal(state.commands.size, 0);
   assert.ok(state.bars.every(bar => bar.disposed));
+  assert.ok(state.output.disposed);
 });
 
 test('周额度、未登录和 API Key 状态在扩展中正确呈现', async () => {
@@ -138,6 +154,28 @@ test('刷新失败清除旧额度和账号，避免将缓存当作当前数据',
     assert.ok(!h.api.getState().text.includes('75%'));
     assert.equal(h.api.getState().snapshot, undefined);
     assert.ok(!h.api.getState().tooltip.includes('SENSITIVE_MOCK_TOKEN'));
+  } finally { await h.dispose(); }
+});
+
+test('失败主动提示并提供诊断，自动重复错误不刷屏，手动重试再次提示', async () => {
+  const h = await harness({ exitMethod: 'account/rateLimits/read', stderr: 'database is locked SENSITIVE_MOCK_TOKEN' });
+  try {
+    state.errorAction = '查看诊断';
+    await h.api.refresh();
+    assert.equal(state.errors.length, 1);
+    assert.match(state.errors[0], /退出码 4/);
+    assert.equal(state.output.shown, 1);
+    const log = state.output.lines.join('\n');
+    assert.match(log, /读取额度/);
+    assert.ok(log.includes(h.home));
+    assert.ok(log.includes('"exitCode": 4'));
+    assert.ok(!log.includes('SENSITIVE_MOCK_TOKEN'));
+    await h.api.refresh();
+    assert.equal(state.errors.length, 1);
+    await mock.commands.executeCommand('codexQuota.refresh');
+    assert.equal(state.errors.length, 2);
+    await mock.commands.executeCommand('codexQuota.showDiagnostics');
+    assert.equal(state.output.shown, 2);
   } finally { await h.dispose(); }
 });
 

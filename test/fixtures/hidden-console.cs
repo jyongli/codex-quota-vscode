@@ -18,6 +18,8 @@ public class ConsoleProbe
             string response;
             if (GetConsoleWindow() != IntPtr.Zero)
                 response = "\"error\":{\"code\":-32603,\"message\":\"A console window was allocated\"}";
+            else if (Environment.GetEnvironmentVariable("ELECTRON_RUN_AS_NODE") != null)
+                response = "\"error\":{\"code\":-32603,\"message\":\"Native process inherited the Electron Node override\"}";
             else if (line.Contains("initialize"))
                 response = "\"result\":{}";
             else

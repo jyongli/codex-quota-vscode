@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { queryCodex, Snapshot } from './cli';
+import { CodexQueryError, queryCodex, Snapshot } from './cli';
 import { activeTarget, ExtensionKinds, hostLabel, selectedTarget, withTarget, ExecutionTarget } from './environment';
 import { accountText, quotaText, QuotaWindow } from './quota';
 
@@ -37,19 +37,22 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private loading = false;
   private readonly target: ExecutionTarget;
   private readonly extensionId: string;
-  private readonly runtimeDirectory: string;
+  private readonly output: vscode.OutputChannel;
+  private notifiedError?: string;
+  private notificationCount = 0;
 
   constructor(context: vscode.ExtensionContext) {
     this.extensionId = context.extension.id;
-    this.runtimeDirectory = context.globalStorageUri.fsPath;
+    this.output = vscode.window.createOutputChannel('Codex Quota');
     this.target = activeTarget(context.extension.extensionKind === vscode.ExtensionKind.Workspace, vscode.env.remoteName);
     this.createBar();
     const commands: Record<string, () => unknown> = {
       'codexQuota.menu': () => this.menu(),
-      'codexQuota.refresh': () => this.refresh(),
+      'codexQuota.refresh': () => this.manualRefresh(),
       'codexQuota.selectEnvironment': () => this.selectEnvironment(),
       'codexQuota.togglePosition': () => this.togglePosition(),
-      'codexQuota.showAccount': () => this.showAccount()
+      'codexQuota.showAccount': () => this.showAccount(),
+      'codexQuota.showDiagnostics': () => this.output.show(true)
     };
     for (const [name, action] of Object.entries(commands)) {
       this.subscriptions.push(vscode.commands.registerCommand(name, async () => {
@@ -127,17 +130,20 @@ class QuotaController implements vscode.Disposable, QuotaApi {
       try {
         const snapshot = await queryCodex({
           cliPath: this.config().get('cliPath', 'codex'),
-          codexHome: this.config().get('codexHome', ''), timeoutMs: timeout * 1000,
-          runtimeDirectory: this.runtimeDirectory
+          codexHome: this.config().get('codexHome', ''), timeoutMs: timeout * 1000
         }, abort.signal);
         if (this.disposed || generation !== this.generation) return;
         this.snapshot = snapshot;
         this.error = undefined;
+        this.notifiedError = undefined;
       } catch (error) {
         if (this.disposed || generation !== this.generation) return;
         // Remove old values on failure so they cannot be mistaken for current quota.
         this.snapshot = undefined;
         this.error = error instanceof Error ? error.message : '额度查询失败。';
+        this.output.appendLine(`[${new Date().toISOString()}] ${this.error}`);
+        if (error instanceof CodexQueryError) this.output.appendLine(JSON.stringify(error.diagnostic, null, 2));
+        if (this.error !== this.notifiedError) void this.notifyFailure(this.error);
       } finally {
         if (!this.disposed && generation === this.generation) {
           this.loading = false;
@@ -191,6 +197,19 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     return { text: this.bar.text, tooltip: String(this.bar.tooltip ?? ''), alignment: this.position(), target: this.target, snapshot: this.snapshot };
   }
 
+  private async notifyFailure(message: string): Promise<void> {
+    this.notifiedError = message;
+    this.notificationCount++;
+    const action = await vscode.window.showErrorMessage(`Codex 额度查询失败：${message}`, '查看诊断');
+    if (action === '查看诊断' && !this.disposed) this.output.show(true);
+  }
+
+  private async manualRefresh(): Promise<void> {
+    const before = this.notificationCount;
+    await this.refresh();
+    if (this.error && before === this.notificationCount) await this.notifyFailure(this.error);
+  }
+
   private async togglePosition(): Promise<void> {
     await this.config().update('statusBarPosition', this.position() === 'left' ? 'right' : 'left', vscode.ConfigurationTarget.Global);
   }
@@ -226,6 +245,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const choice = await vscode.window.showQuickPick([
       { label: '$(refresh) 刷新额度', command: 'codexQuota.refresh' },
       { label: '$(account) 查看账号与额度来源', command: 'codexQuota.showAccount' },
+      { label: '$(output) 查看诊断日志', command: 'codexQuota.showDiagnostics' },
       { label: '$(remote) 选择本地／远程环境', command: 'codexQuota.selectEnvironment' },
       { label: '$(arrow-swap) 切换状态栏左右位置', command: 'codexQuota.togglePosition' },
       { label: '$(settings-gear) 打开设置', command: 'settings' }
@@ -240,6 +260,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     this.invalidate();
     if (this.interval) clearInterval(this.interval);
     this.bar.dispose();
+    this.output.dispose();
     for (const subscription of this.subscriptions) subscription.dispose();
   }
 }

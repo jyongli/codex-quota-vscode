@@ -2,7 +2,7 @@
   "name": "codex-quota-vscode",
   "displayName": "Codex Quota",
   "description": "查看所选本地或远程 Codex CLI 账号的 5 小时与周剩余额度。",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "jyongli",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/jyongli/codex-quota-vscode.git" },
@@ -22,7 +22,8 @@
       { "command": "codexQuota.refresh", "title": "Codex Quota: 刷新额度" },
       { "command": "codexQuota.selectEnvironment", "title": "Codex Quota: 选择本地／远程环境" },
       { "command": "codexQuota.togglePosition", "title": "Codex Quota: 切换状态栏左右位置" },
-      { "command": "codexQuota.showAccount", "title": "Codex Quota: 查看账号与额度来源" }
+      { "command": "codexQuota.showAccount", "title": "Codex Quota: 查看账号与额度来源" },
+      { "command": "codexQuota.showDiagnostics", "title": "Codex Quota: 查看诊断日志" }
     ],
     "configuration": {
       "title": "Codex Quota",

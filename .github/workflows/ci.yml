@@ -25,16 +25,16 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:bundle
-      - if: runner.os == 'Linux'
-        run: xvfb-run -a npm run test:vscode
-      - if: runner.os == 'Windows'
-        run: npm run test:vscode
-      - name: Test the official Windows npm CLI
-        if: runner.os == 'Windows'
+      - name: Install and test the official npm CLI
         shell: bash
         run: |
           npm install --prefix "$RUNNER_TEMP/codex-quota-native" --no-package-lock @openai/codex@0.162.1
           node scripts/test-native.mjs "$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js"
+          printf '%s\n' "CODEX_QUOTA_NATIVE_CLI=$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js" >> "$GITHUB_ENV"
+      - if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:vscode
+      - if: runner.os == 'Windows'
+        run: npm run test:vscode
       - run: npm run package
       - uses: actions/upload-artifact@v4
         with:

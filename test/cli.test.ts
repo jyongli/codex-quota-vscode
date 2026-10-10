@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { mkdir, realpath, writeFile } from 'node:fs/promises';
-import { queryCodex, resolveCli } from '../src/cli';
+import { CodexQueryError, queryCodex, resolveCli } from '../src/cli';
 import { cleanup, fixtureCli, readTrace, scenarioHome } from './helpers';
 import { quotaText } from '../src/quota';
 
@@ -19,7 +19,7 @@ test('真实子进程 JSONL 握手、分片、通知、账号来源及额度读�
     assert.equal(snapshot.codexHome, home);
     assert.equal(snapshot.cliPath, fixtureCli);
     const trace = await readTrace(home);
-    assert.deepEqual(trace[0].args, ['app-server']);
+    assert.deepEqual(trace[0].args, ['app-server', '--listen', 'stdio://']);
     assert.deepEqual(trace.slice(1).map(row => row.method), ['initialize', 'initialized', 'account/read', 'account/rateLimits/read', 'account/read']);
     assert.deepEqual(trace[3].params, { refreshToken: false });
     assert.throws(() => process.kill(trace[0].pid as number, 0), { code: 'ESRCH' });
@@ -110,7 +110,9 @@ test('Windows 官方 npm shim 和 JS 入口直接解析到原生程序：x64／A
           await mkdir(path.dirname(native), { recursive: true });
           await writeFile(native, '');
           for (const command of ['codex', entry]) {
-            assert.deepEqual(await resolveCli(command, { PATH: home }, 'win32', arch), { executable: await realpath(native), args: [] });
+            assert.deepEqual(await resolveCli(command, { PATH: home }, 'win32', arch), {
+              executable: await realpath(native), args: [], packageRoot: await realpath(packageRoot)
+            });
           }
         });
       }
@@ -153,11 +155,30 @@ test('相对 CODEX_HOME 被拒绝', async () => {
   await assert.rejects(queryCodex({ cliPath: fixtureCli, codexHome: './credentials', timeoutMs: 3000 }), /绝对路径/);
 });
 
-test('辅助数据库和日志单独存储，不改变账号配置目录', async () => {
+test('显式使用 stdio，沿用 CLI 配置，不注入数据库与日志覆盖参数', async () => {
   await withScenario({}, async home => {
-    const runtimeDirectory = path.join(home, 'helper-data');
-    const snapshot = await queryCodex({ cliPath: fixtureCli, codexHome: home, runtimeDirectory, timeoutMs: 3000 });
+    const snapshot = await queryCodex({ cliPath: fixtureCli, codexHome: home, timeoutMs: 3000 });
     assert.equal(snapshot.codexHome, home);
-    assert.deepEqual((await readTrace(home))[0].args, ['app-server', '-c', `sqlite_home=${JSON.stringify(runtimeDirectory)}`, '-c', `log_dir=${JSON.stringify(runtimeDirectory)}`]);
+    assert.deepEqual((await readTrace(home))[0].args, ['app-server', '--listen', 'stdio://']);
+    assert.equal((await readTrace(home))[0].electronRunAsNode, '1');
   });
+});
+
+test('提前退出报告阶段、退出码与安全分类，不暴露原始 stderr', async () => {
+  for (const [exitMethod, phase, stderr, hint] of [
+    ['initialize', '启动并初始化 CLI', 'failed to initialize sqlite state runtime SENSITIVE_MOCK_TOKEN', /数据库/],
+    ['account/rateLimits/read', '读取额度', 'TOML parse error SENSITIVE_MOCK_TOKEN', /配置解析/],
+    ['account/read', '读取账号', 'unknown error SENSITIVE_MOCK_TOKEN', /诊断日志/]
+  ] as const) {
+    await withScenario({ exitMethod, stderr }, async home => {
+      await assert.rejects(queryCodex({ cliPath: fixtureCli, codexHome: home, timeoutMs: 3000 }), reason => {
+        assert.ok(reason instanceof CodexQueryError);
+        assert.match(reason.message, /退出码 4/);
+        assert.match(reason.message, hint);
+        assert.ok(!reason.message.includes('SENSITIVE_MOCK_TOKEN'));
+        assert.deepEqual(reason.diagnostic, { phase, cliPath: fixtureCli, codexHome: home, exitCode: 4, signal: null });
+        return true;
+      });
+    });
+  }
 });

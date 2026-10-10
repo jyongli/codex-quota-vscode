@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { QuotaApi } from '../../src/extension';
@@ -32,6 +32,22 @@ export async function run(): Promise<void> {
     await vscode.commands.executeCommand('codexQuota.refresh');
     assert.match(api.getState().text, /API Key/);
     console.log('PASS: API-key account has no fabricated subscription quota');
+    await writeFile(path.join(home, 'scenario.json'), JSON.stringify({ exitMethod: 'initialize', stderr: 'TOML parse error SENSITIVE_MOCK_TOKEN' }));
+    await vscode.commands.executeCommand('codexQuota.refresh');
+    assert.match(api.getState().text, /查询失败/);
+    assert.match(api.getState().tooltip, /退出码 4/);
+    assert.ok(!api.getState().tooltip.includes('SENSITIVE_MOCK_TOKEN'));
+    await vscode.commands.executeCommand('codexQuota.showDiagnostics');
+    console.log('PASS: startup failure diagnostics and output command in the real VS Code host');
+    if (process.env.CODEX_QUOTA_NATIVE_CLI) {
+      const nativeHome = path.join(home, 'native home 中文 with spaces');
+      await mkdir(nativeHome);
+      await config.update('cliPath', process.env.CODEX_QUOTA_NATIVE_CLI, vscode.ConfigurationTarget.Global);
+      await config.update('codexHome', nativeHome, vscode.ConfigurationTarget.Global);
+      await api.refresh();
+      assert.match(api.getState().text, /未登录/);
+      console.log('PASS: real VS Code extension host launches the official npm Codex CLI and reads an isolated unsigned-in account');
+    }
   } finally {
     for (const [key, value] of Object.entries(previous)) await config.update(key, value, vscode.ConfigurationTarget.Global);
     await rm(home, { recursive: true, force: true });
