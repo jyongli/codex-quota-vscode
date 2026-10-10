@@ -9,3 +9,7 @@
 本组件读取官方 `account/read` 和 `account/rateLimits/read` 协议，不读取凭据文件。查询在隐藏窗口的后台进程运行，取消、超时及组件退出都会终止查询。升级时如有自定义远程 CLI 或配置目录，请将旧远程设置改为上述 `remoteCliPath`、`remoteCodexHome`。
 
 请安装与主插件相同版本的组件。具体安装与升级步骤见 [主仓库说明](https://github.com/jyongli/codex-quota-vscode#readme)。
+
+0.1.6 起，当主插件启用公网 IP 显示时，由本组件在远程宿主通过 HTTPS ipify 获取出口地址；3 秒独立超时，成功缓存 5 分钟，失败不影响额度查询。错误信息通过可翻译的协议传回，由主插件当前所选中／英文显示。
+
+This is the **remote workspace component of the Codex Quota VS Code extension**. Install it on the remote host and keep its version aligned with the local main extension. It uses the remote machine’s Codex CLI, account, network interface IP and public outbound IP. Public IP lookup failure does not prevent quota queries. The main extension controls Chinese / English display language. See the [English guide](https://github.com/jyongli/codex-quota-vscode/blob/main/README.en.md).

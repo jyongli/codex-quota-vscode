@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { CodexQueryError, Snapshot } from './cli';
 import { REMOTE_CANCEL, REMOTE_PROTOCOL, REMOTE_QUERY, RemoteReply } from './remoteProtocol';
+import { fail, LocalizedError } from './i18n';
 
 type CommandSender = (command: string, argument: unknown) => PromiseLike<unknown>;
 
-export function queryRemote(send: CommandSender, remoteName: string, timeoutMs: number, signal: AbortSignal): Promise<Snapshot> {
+export function queryRemote(send: CommandSender, remoteName: string, timeoutMs: number, signal: AbortSignal, includePublicIp = false): Promise<Snapshot> {
   const requestId = randomUUID();
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -16,29 +17,29 @@ export function queryRemote(send: CommandSender, remoteName: string, timeoutMs: 
       signal.removeEventListener('abort', abort);
       if (error) reject(error); else resolve(snapshot!);
     };
-    const abort = () => { cancel(); finish(new Error('额度查询已取消。')); };
+    const abort = () => { cancel(); finish(fail('cancelled')); };
     const timer = setTimeout(() => {
-      cancel(); finish(new Error('远程额度查询超时；请检查远程连接和 Codex Quota Remote 查询组件。'));
+      cancel(); finish(fail('remoteTimeout'));
     }, timeoutMs + 1000);
     signal.addEventListener('abort', abort, { once: true });
     if (signal.aborted) { abort(); return; }
-    void Promise.resolve().then(() => send(REMOTE_QUERY, { protocol: REMOTE_PROTOCOL, requestId, timeoutMs })).then(value => {
+    void Promise.resolve().then(() => send(REMOTE_QUERY, { protocol: REMOTE_PROTOCOL, requestId, timeoutMs, includePublicIp })).then(value => {
       if (settled) return;
       const reply = value as RemoteReply | undefined;
       if (!reply || reply.protocol !== REMOTE_PROTOCOL) {
-        finish(new Error('远程查询组件未安装、未启用或版本不兼容；请在远程端安装同版本的 Codex Quota Remote。')); return;
+        finish(fail('remoteUnavailable')); return;
       }
       if (reply.remoteName !== remoteName) {
-        finish(new Error('查询组件未在当前远程宿主运行；请在远程端安装 Codex Quota Remote。')); return;
+        finish(fail('remoteWrongHost')); return;
       }
       if (!reply.ok) {
-        finish(reply.diagnostic ? new CodexQueryError(reply.message, reply.diagnostic) : new Error(reply.message)); return;
+        finish(reply.diagnostic ? new CodexQueryError(reply.translation, reply.diagnostic) : new LocalizedError(reply.translation)); return;
       }
       const checkedAt = new Date(reply.snapshot.checkedAt);
       if (!Number.isFinite(checkedAt.getTime()) || !reply.snapshot.account || typeof reply.hostIp !== 'string') {
-        finish(new Error('远程查询组件返回的数据无效。')); return;
+        finish(fail('remoteInvalidData')); return;
       }
       finish(undefined, { ...reply.snapshot, checkedAt, hostIp: reply.hostIp });
-    }).catch(() => finish(new Error('无法连接远程查询组件；请在远程端安装并启用 Codex Quota Remote。')));
+    }).catch(() => finish(fail('remoteConnection')));
   });
 }

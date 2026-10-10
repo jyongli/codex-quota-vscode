@@ -1,11 +1,14 @@
 # Codex Quota for VS Code
 
+中文 | [English](README.en.md)
+
 Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS Code 状态栏查看所选执行环境中 **Codex CLI 当前 ChatGPT 账号**的剩余额度。
 
 - 有明确的 5 小时窗口：`Codex [本地] 5 小时 75% · 周 60%`。
 - 没有 5 小时窗口：`Codex [本地] 周 60%`。
 - 本地／远程查询即时切换，无须重载窗口；状态栏左／右位置即时切换。
-- 悬浮提示显示执行宿主的 IP 地址、账号邮箱与计划、剩余额度、重置时间、查询时间和当前刷新时间间隔。
+- 支持跟随 VS Code、中文与 English，切换语言立即生效，无须重新查询或重载窗口。
+- 悬浮提示显示执行宿主的内网 IP 与公网出口 IP、账号邮箱与计划、剩余额度、重置时间、查询时间和当前刷新时间间隔。
 - 账号来源、CLI 路径与 Codex 配置目录通过“查看账号与额度来源”菜单查看。
 - 默认每 5 分钟刷新，也可点击状态栏打开菜单手动刷新。
 
@@ -13,16 +16,16 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 
 要求桌面 VS Code 1.95+。在要查询的机器安装官方 [Codex CLI](https://github.com/openai/codex)，建议 0.116.0+，并用 ChatGPT 账号执行 `codex login`。
 
-从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.5**。主插件安装在本地；需要远程查询时，在远程端一次性安装同版本的查询组件。安装包也保存在 [releases/v0.1.5](releases/v0.1.5) 中：
+从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.6**。主插件安装在本地；需要远程查询时，在远程端一次性安装同版本的查询组件。安装包也保存在 [releases/v0.1.6](releases/v0.1.6) 中：
 
-- [本地主插件 codex-quota-vscode-0.1.5.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.5/codex-quota-vscode-0.1.5.vsix)
-- [远程查询组件 codex-quota-remote-0.1.5.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.5/codex-quota-remote-0.1.5.vsix)
-- [主插件 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.5/codex-quota-vscode-0.1.5.vsix.sha256)／[远程组件 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.5/codex-quota-remote-0.1.5.vsix.sha256)
+- [本地主插件 codex-quota-vscode-0.1.6.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.6/codex-quota-vscode-0.1.6.vsix)
+- [远程查询组件 codex-quota-remote-0.1.6.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.6/codex-quota-remote-0.1.6.vsix)
+- [主插件 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.6/codex-quota-vscode-0.1.6.vsix.sha256)／[远程组件 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.6/codex-quota-remote-0.1.6.vsix.sha256)
 
 从 VS Code 扩展视图的“…”菜单选择 **Install from VSIX / 从 VSIX 安装**。本地安装也可执行：
 
 ```sh
-code --install-extension codex-quota-vscode-0.1.5.vsix
+code --install-extension codex-quota-vscode-0.1.6.vsix
 ```
 
 插件默认在本地执行。CLI 不在 VS Code 进程的 PATH 中时，在用户设置中指定 `codexQuota.cliPath` 的绝对路径；图形界面启动的 VS Code 不一定继承终端的 PATH。
@@ -34,6 +37,7 @@ code --install-extension codex-quota-vscode-0.1.5.vsix
 | Codex Quota: 刷新额度 | 立即查询，重叠请求合并 |
 | Codex Quota: 选择本地／远程环境 | 立即改为查询所选机器，无须重载 |
 | Codex Quota: 切换状态栏左右位置 | 更新当前生效的用户／工作区设置并立即生效 |
+| Codex Quota: 选择显示语言 | 跟随 VS Code／中文／English，立即更新当前显示 |
 | Codex Quota: 查看账号与额度来源 | 查询后展示来源详情 |
 | Codex Quota: 查看诊断日志 | 打开 Codex Quota 输出面板，查看失败阶段、CLI 路径、配置目录与退出码 |
 
@@ -42,7 +46,7 @@ code --install-extension codex-quota-vscode-0.1.5.vsix
 主插件负责本机查询和状态栏，固定在本地运行；**Codex Quota Remote** 在远程工作区宿主运行，读取远程机器的 CLI 与账号。两端通过 VS Code 命令通道传递查询结果和取消请求，切换环境只改变查询路由，无须迁移扩展宿主。支持 Remote SSH、WSL、Dev Containers 和桌面 Codespaces。
 
 1. 本地查询使用本机的 Codex CLI、环境变量、配置目录和系统凭据存储。
-2. 连接远程工作区，通过“从 VSIX 安装”在**远程端**安装 `codex-quota-remote-0.1.5.vsix`，并在那里安装和登录 Codex CLI。在扩展视图的远程分组确认 **Codex Quota Remote** 已安装；主插件 **Codex Quota** 安装在本地。
+2. 连接远程工作区，通过“从 VSIX 安装”在**远程端**安装 `codex-quota-remote-0.1.6.vsix`，并在那里安装和登录 Codex CLI。在扩展视图的远程分组确认 **Codex Quota Remote** 已安装；主插件 **Codex Quota** 安装在本地。
 3. 执行“选择本地／远程环境”，选择目标端，立即重新查询。切换时取消旧请求并清除旧额度，晚到的结果不会覆盖新环境的账号。
 4. 通过状态栏的 `[本地]`／`[远程]` 和悬浮提示中的 IP 地址确认所查询的宿主；“查看账号与额度来源”展示账号来源与路径。远程端的 CLI 路径与配置目录分别使用 `codexQuota.remoteCliPath`、`codexQuota.remoteCodexHome`，通过 VS Code 的远程用户设置配置。
 
@@ -60,7 +64,13 @@ code --install-extension codex-quota-vscode-0.1.5.vsix
 
 浏览器版 VS Code、纯虚拟工作区及不受信任的工作区不在支持范围内。
 
-悬浮提示的 **IP 地址**取自插件实际执行宿主的网卡：本地模式显示本机地址，远程模式显示远程宿主地址。排除回环地址，优先 IPv4；多张网卡的地址去重后列出，仅有 IPv6 时显示 IPv6，没有可用地址时显示“未获取到”。这里显示宿主网卡地址，不调用公网 IP 查询服务。**刷新时间间隔**与实际轮询使用同一设置，修改后立即更新，例如 `5 分钟（300 秒）` 或 `90 秒`。
+悬浮提示的 **IP 地址**取自插件实际执行宿主的网卡：本地模式显示本机地址，远程模式显示远程宿主地址。排除回环地址，优先 IPv4；多张网卡的地址去重后列出，仅有 IPv6 时显示 IPv6，没有可用地址时显示“未获取到”。另加一行 **公网 IP**：由实际查询宿主通过 HTTPS 请求 `https://api64.ipify.org` 获取出口 IPv4／IPv6，本地模式查询本机、远程模式查询远程机器。地址按宿主缓存在内存中 5 分钟；请求独立超时为 3 秒，失败显示“未获取到”，不影响额度查询，失败结果只缓存 30 秒。服务请求不包含账号、CLI 路径或凭据；显示的是该 HTTPS 请求使用的出口，可能受 VPN／代理配置影响。设置 `codexQuota.showPublicIp: false` 可隐藏该行并停止公网 IP 请求。**刷新时间间隔**与实际轮询使用同一设置，修改后立即更新，例如 `5 分钟（300 秒）` 或 `90 秒`。
+
+## 中英文选择
+
+点击状态栏 → **选择显示语言 / Choose display language**，可选择 **跟随 VS Code、中文、English**。也可设置 `codexQuota.language` 为 `auto`、`zh-CN` 或 `en`。自动模式对中文 VS Code 显示中文，其他界面语言显示英文。
+
+插件菜单、状态栏、悬浮提示、账号说明及错误提示立即切换，保留当前额度和查询时间，不中断查询、不重载窗口。命令面板标题、扩展说明及原生设置页面文案使用 VS Code 的清单翻译机制，跟随 VS Code 界面语言；独立的插件语言选项控制插件运行时显示。账号邮箱、IP、文件路径和计划名称保留接口原始值。
 
 ## 官方接口与账号来源
 
@@ -89,7 +99,7 @@ API Key、Amazon Bedrock 和未登录状态会分别标明，不伪造 ChatGPT �
 
 显示值为 `max(0, 100 - usedPercent)`，保留最多一位小数。按 `windowDurationMins` 识别 **300 分钟**及 **10080 分钟**，不假定 primary / secondary 的位置；多额度桶优先使用 `codex`，不混合其他模型的额度。
 
-`—` 表示接口没有返回明确的对应窗口。未知时长不会被标成周额度；没有周窗口时不会假装剩余 100%。重置时间来自接口的 Unix 时间戳，以 VS Code 执行宿主的区域设置显示，不根据时间自行推断恢复额度。
+`—` 表示接口没有返回明确的对应窗口。未知时长不会被标成周额度；没有周窗口时不会假装剩余 100%。重置时间来自接口的 Unix 时间戳，以插件所选中／英文区域格式显示，不根据时间自行推断恢复额度。
 
 请求超时、协议错误或网络失败后会清除旧数字并显示“查询失败”，同时主动弹出错误提示，可点击“查看诊断”。自动刷新遇到相同错误不会重复弹窗，手动刷新失败会再次提示。设置变化取消旧查询；插件卸载会终止辅助进程。查询只调用初始化、账号读取与额度读取，不创建会话，不发起模型生成。
 
@@ -104,6 +114,8 @@ CLI 用参数数组在后台启动，`shell: false`、`windowsHide: true`，通�
 | 设置 | 默认 | 说明 |
 | --- | --- | --- |
 | `codexQuota.executionEnvironment` | `local` | `local` / `remote`，即时切换；远程端需安装查询组件 |
+| `codexQuota.language` | `auto` | `auto` / `zh-CN` / `en`，即时切换显示语言 |
+| `codexQuota.showPublicIp` | `true` | 显示查询宿主的公网出口 IP；关闭后停止请求 |
 | `codexQuota.statusBarPosition` | `right` | `left` / `right`，即时生效 |
 | `codexQuota.cliPath` | `codex` | 本机 CLI 路径；本地用户设置，远程设置不能覆盖 |
 | `codexQuota.codexHome` | 空 | 本机配置目录；继承本机配置，支持绝对路径和 `~/` |

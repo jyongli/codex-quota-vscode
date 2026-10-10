@@ -7,6 +7,7 @@ import type { QuotaApi } from '../src/extension';
 import type * as VSCode from 'vscode';
 import { cleanup, fixtureCli, readTrace, scenarioHome } from './helpers';
 import { hostIpAddress } from '../src/environment';
+import type { LanguageSetting } from '../src/i18n';
 
 type Listener = (event: { affectsConfiguration(key: string): boolean }) => void;
 interface Bar {
@@ -25,11 +26,12 @@ interface MockState {
   errors: string[];
   output: { lines: string[]; shown: number; disposed: boolean };
   errorAction?: string;
-  choice?: { target?: 'local' | 'remote'; command?: string; label: string };
+  choice?: { target?: 'local' | 'remote'; command?: string; language?: LanguageSetting; label: string };
+  picks: { label: string }[][];
   reloads: number;
 }
 let state: MockState;
-const env: { remoteName?: string } = {};
+const env: { remoteName?: string; language: string } = { language: 'zh-cn' };
 const workspace = {
   isTrusted: true,
   getConfiguration(section: string) {
@@ -68,7 +70,7 @@ const mock = {
       state.bars.push(bar);
       return bar;
     },
-    async showQuickPick() { const result = state.choice; state.choice = undefined; return result; },
+    async showQuickPick(items: { label: string }[]) { state.picks.push(items); const result = state.choice; state.choice = undefined; return result; },
     async showInformationMessage(message: string) { state.messages.push(message); return undefined; },
     async showWarningMessage(message: string) { state.messages.push(message); return undefined; },
     async showErrorMessage(message: string) {
@@ -122,18 +124,19 @@ function fire(changed: string): void {
 
 async function harness(scenario: unknown, options: {
   remoteName?: string; workspaceHost?: boolean; remoteSelected?: boolean; trusted?: boolean;
-  provider?: boolean; providerUi?: boolean; remoteScenario?: unknown; workspacePosition?: string; legacyKinds?: boolean;
+  provider?: boolean; providerUi?: boolean; remoteScenario?: unknown; workspacePosition?: string; legacyKinds?: boolean; language?: LanguageSetting; vscodeLanguage?: string; workspaceLanguage?: LanguageSetting; publicIp?: boolean;
 } = {}): Promise<{ api: QuotaApi; home: string; remoteHome?: string; dispose(): Promise<void> }> {
   const home = await scenarioHome(scenario);
   state = {
-    settings: { cliPath: fixtureCli, codexHome: home, statusBarPosition: 'right', requestTimeoutSeconds: 5,
+    settings: { language: options.language ?? 'auto', showPublicIp: options.publicIp ?? false, cliPath: fixtureCli, codexHome: home, statusBarPosition: 'right', requestTimeoutSeconds: 5,
       ...(options.remoteSelected ? { executionEnvironment: 'remote' } : {}) },
-    workspaceValues: options.workspacePosition ? { statusBarPosition: options.workspacePosition } : {}, updates: [],
+    workspaceValues: { ...(options.workspacePosition ? { statusBarPosition: options.workspacePosition } : {}), ...(options.workspaceLanguage ? { language: options.workspaceLanguage } : {}) }, updates: [],
     kinds: options.legacyKinds ? { 'other.extension': ['ui'], 'jyongli.codex-quota-vscode': ['workspace'] } : {},
     listeners: new Set(), commands: new Map(), bars: [], messages: [], errors: [],
-    output: { lines: [], shown: 0, disposed: false }, reloads: 0
+    output: { lines: [], shown: 0, disposed: false }, picks: [], reloads: 0
   };
   env.remoteName = options.remoteName;
+  env.language = options.vscodeLanguage ?? 'zh-cn';
   workspace.isTrusted = options.trusted ?? true;
   const subscriptions: VSCode.Disposable[] = [];
   const remoteSubscriptions: VSCode.Disposable[] = [];
@@ -157,7 +160,7 @@ test('扩展激活、命令注册、状态栏、账号来源与即时左右切�
   const h = await harness({});
   try {
     await h.api.refresh();
-    assert.equal(state.commands.size, 6);
+    assert.equal(state.commands.size, 7);
     assert.equal(h.api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
     assert.match(h.api.getState().tooltip, /fixture@example.test/);
     assert.ok(h.api.getState().tooltip.includes(`IP 地址：${hostIpAddress()}`));
@@ -391,4 +394,98 @@ test('不信任工作区时不执行 CLI', async () => {
     assert.match(h.api.getState().text, /信任工作区/);
     await assert.rejects(readTrace(h.home), { code: 'ENOENT' });
   } finally { await h.dispose(); }
+});
+
+test('语言菜单立即重译已有额度和菜单，不重查 CLI；工作区覆盖更新生效层', async () => {
+  const h = await harness({}, { workspaceLanguage: 'zh-CN' });
+  try {
+    await h.api.refresh();
+    const snapshot = h.api.getState().snapshot;
+    const trace = await readTrace(h.home);
+    state.choice = { language: 'en', label: 'English' };
+    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    assert.equal(state.workspaceValues.language, 'en');
+    assert.equal(state.updates.at(-1)?.target, mock.ConfigurationTarget.Workspace);
+    assert.equal(h.api.getState().text, 'Codex [Local] 5h 75% · Week 60%');
+    assert.match(h.api.getState().tooltip, /Account: fixture@example.test.*ChatGPT/);
+    assert.match(h.api.getState().tooltip, /5-hour quota resets:.*\nWeekly quota resets:/);
+    assert.match(h.api.getState().tooltip, /Refresh interval: 5 minutes \(300 seconds\)/);
+    assert.equal(h.api.getState().snapshot, snapshot);
+    assert.deepEqual(await readTrace(h.home), trace);
+    await mock.commands.executeCommand('codexQuota.menu');
+    assert.ok(state.picks.at(-1)?.some(item => item.label.includes('Choose display language')));
+    assert.doesNotMatch(state.picks.at(-1)!.map(item => item.label).join('\n'), /[\u4e00-\u9fff]/);
+    await mock.commands.executeCommand('codexQuota.showAccount');
+    assert.match(state.messages.at(-1)!, /Account source:.*Codex CLI.*VS Code GitHub/);
+    state.choice = { language: 'zh-CN', label: '中文' };
+    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    assert.match(h.api.getState().tooltip, /账号：fixture@example.test/);
+    assert.equal(state.reloads, 0);
+  } finally { await h.dispose(); }
+});
+
+test('英文 VS Code 默认跟随英语；手动语言覆盖并即时重译缓存错误', async () => {
+  const h = await harness({ exitMethod: 'account/rateLimits/read', stderr: 'database is locked SENSITIVE_MOCK_TOKEN' }, { vscodeLanguage: 'en-US' });
+  try {
+    state.errorAction = 'View diagnostics';
+    await h.api.refresh();
+    assert.match(h.api.getState().text, /Codex \[Local\].*Query failed/);
+    assert.match(h.api.getState().tooltip, /quota read.*exit code 4.*database/);
+    assert.equal(state.output.shown, 1);
+    assert.equal(JSON.parse(state.output.lines[1]).phase, 'quota read');
+    const trace = await readTrace(h.home);
+    state.choice = { language: 'zh-CN', label: '中文' };
+    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    assert.match(h.api.getState().tooltip, /读取额度.*退出码 4.*数据库/);
+    assert.deepEqual(await readTrace(h.home), trace);
+    assert.equal(state.errors.length, 1);
+    state.choice = { language: 'auto', label: 'Follow VS Code' };
+    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    await mock.commands.executeCommand('codexQuota.refresh');
+    assert.equal(state.errors.length, 2);
+    assert.match(state.errors[1], /Codex quota query failed:.*quota read/);
+    assert.doesNotMatch(state.output.lines.join('\n'), /SENSITIVE_MOCK_TOKEN/);
+  } finally { await h.dispose(); }
+});
+
+test('远程错误经过 JSON 通道后可按本地显示语言切换，不重新查询远程 CLI', async () => {
+  const h = await harness({}, { remoteName: 'ssh-remote', provider: true, remoteSelected: true, language: 'en', remoteScenario: {
+    exitMethod: 'initialize', stderr: 'TOML parse error SENSITIVE_MOCK_TOKEN'
+  } });
+  try {
+    await h.api.refresh();
+    assert.match(h.api.getState().tooltip, /CLI startup and initialization.*exit code 4.*configuration/);
+    const trace = await readTrace(h.remoteHome!);
+    state.choice = { language: 'zh-CN', label: '中文' };
+    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    assert.match(h.api.getState().tooltip, /启动并初始化 CLI.*退出码 4.*配置/);
+    assert.deepEqual(await readTrace(h.remoteHome!), trace);
+    await assert.rejects(readTrace(h.home), { code: 'ENOENT' });
+  } finally { await h.dispose(); }
+});
+
+test('公网 IP 由查询宿主返回，显示开关停止请求且语言切换保留地址', async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; return new Response('203.0.113.42'); };
+  const h = await harness({}, { publicIp: true, remoteName: 'ssh-remote', provider: true, remoteSelected: true });
+  try {
+    await h.api.refresh();
+    assert.ok(calls > 0);
+    assert.equal(h.api.getState().snapshot?.publicIp, '203.0.113.42');
+    assert.match(h.api.getState().tooltip, /IP 地址：.+\n公网 IP：203\.0\.113\.42/);
+    await assert.rejects(readTrace(h.home), { code: 'ENOENT' });
+    state.choice = { language: 'en', label: 'English' };
+    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    assert.match(h.api.getState().tooltip, /Public IP: 203\.0\.113\.42/);
+    const before = calls;
+    state.settings.showPublicIp = false; fire('codexQuota.showPublicIp');
+    await h.api.refresh();
+    assert.doesNotMatch(h.api.getState().tooltip, /Public IP:/);
+    assert.equal(calls, before);
+    state.choice = { target: 'local', label: 'Local' };
+    await mock.commands.executeCommand('codexQuota.selectEnvironment');
+    assert.equal(calls, before);
+    assert.match(h.api.getState().tooltip, /fixture@example.test/);
+  } finally { await h.dispose(); globalThis.fetch = originalFetch; }
 });

@@ -5,13 +5,14 @@ import { REMOTE_CANCEL, REMOTE_PROTOCOL, REMOTE_QUERY, RemoteReply } from '../sr
 
 const response = (): RemoteReply => ({
   protocol: REMOTE_PROTOCOL, remoteName: 'ssh-remote', hostIp: '10.20.30.40', ok: true,
-  snapshot: { account: { type: 'signedOut' }, cliPath: '/remote/bin/codex', codexHome: '/remote/.codex', checkedAt: '2026-10-10T00:00:00Z' }
+  snapshot: { account: { type: 'signedOut' }, publicIp: '198.51.100.25', cliPath: '/remote/bin/codex', codexHome: '/remote/.codex', checkedAt: '2026-10-10T00:00:00Z' }
 });
 
 test('远程协议传回远程路径、IP 和日期，拒绝其他宿主或不兼容组件', async () => {
   const controller = new AbortController();
   const snapshot = await queryRemote(async () => response(), 'ssh-remote', 5000, controller.signal);
   assert.equal(snapshot.hostIp, '10.20.30.40');
+  assert.equal(snapshot.publicIp, '198.51.100.25');
   assert.equal(snapshot.codexHome, '/remote/.codex');
   assert.ok(snapshot.checkedAt instanceof Date);
   await assert.rejects(queryRemote(async () => ({ ...response(), remoteName: null }), 'ssh-remote', 5000, controller.signal), /当前远程宿主/);

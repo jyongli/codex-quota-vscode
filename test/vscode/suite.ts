@@ -6,12 +6,15 @@ import path from 'node:path';
 import type { QuotaApi } from '../../src/extension';
 import { REMOTE_PROTOCOL, REMOTE_QUERY, RemoteReply } from '../../src/remoteProtocol';
 import { randomUUID } from 'node:crypto';
+import { ReadableStream } from 'node:stream/web';
 
 export async function run(): Promise<void> {
   const home = await mkdtemp(path.join(tmpdir(), 'codex-quota-vscode-'));
   const config = vscode.workspace.getConfiguration('codexQuota');
-  const previous = Object.fromEntries(['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'statusBarPosition', 'executionEnvironment'].map(key => [key, config.inspect(key)?.globalValue]));
+  const previous = Object.fromEntries(['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'statusBarPosition', 'executionEnvironment', 'language', 'showPublicIp'].map(key => [key, config.inspect(key)?.globalValue]));
   try {
+    await config.update('language', 'zh-CN', vscode.ConfigurationTarget.Global);
+    await config.update('showPublicIp', false, vscode.ConfigurationTarget.Global);
     await writeFile(path.join(home, 'scenario.json'), '{}');
     await config.update('cliPath', path.resolve(__dirname, '../../../test/fixtures/codex.cjs'), vscode.ConfigurationTarget.Global);
     await config.update('codexHome', home, vscode.ConfigurationTarget.Global);
@@ -28,6 +31,36 @@ export async function run(): Promise<void> {
     assert.match(api.getState().tooltip, /刷新时间间隔：5 分钟（300 秒）/);
     assert.doesNotMatch(api.getState().tooltip, /数据来源：|账号来源：|CLI：|Codex 配置目录：|凭据由 Codex/);
     console.log('PASS: extension activation, real child-process quota, compact tooltip with host IP and refresh interval');
+    const checkedAt = api.getState().snapshot?.checkedAt;
+    await config.update('language', 'en', vscode.ConfigurationTarget.Global);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(api.getState().text, 'Codex [Local] 5h 75% · Week 60%');
+    assert.match(api.getState().tooltip, /Account: fixture@example.test/);
+    assert.equal(api.getState().snapshot?.checkedAt, checkedAt);
+    await config.update('language', 'zh-CN', vscode.ConfigurationTarget.Global);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    console.log('PASS: immediate language switch preserves the quota snapshot in the real VS Code host');
+    const originalFetch = globalThis.fetch;
+    let publicIpCalls = 0;
+    globalThis.fetch = async input => {
+      assert.equal(input, 'https://api64.ipify.org');
+      publicIpCalls++;
+      return { ok: true, body: new ReadableStream({ start(controller) { controller.enqueue(Buffer.from('203.0.113.19')); controller.close(); } }) } as Response;
+    };
+    try {
+      await config.update('showPublicIp', true, vscode.ConfigurationTarget.Global);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await api.refresh();
+      assert.equal(api.getState().snapshot?.publicIp, '203.0.113.19');
+      assert.match(api.getState().tooltip, /IP 地址：.+\n公网 IP：203\.0\.113\.19/);
+      assert.equal(publicIpCalls, 1, 'the next quota refresh must reuse the cached public IP');
+      await config.update('showPublicIp', false, vscode.ConfigurationTarget.Global);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await api.refresh();
+      assert.doesNotMatch(api.getState().tooltip, /公网 IP/);
+      assert.equal(publicIpCalls, 1);
+    } finally { globalThis.fetch = originalFetch; }
+    console.log('PASS: public IP display, cache and disable setting in the real VS Code host');
     await config.update('statusBarPosition', 'left', vscode.ConfigurationTarget.Global);
     await Promise.race([
       vscode.commands.executeCommand('codexQuota.togglePosition'),
@@ -50,6 +83,12 @@ export async function run(): Promise<void> {
     assert.match(api.getState().tooltip, /退出码 4/);
     assert.ok(!api.getState().tooltip.includes('SENSITIVE_MOCK_TOKEN'));
     await vscode.commands.executeCommand('codexQuota.showDiagnostics');
+    await config.update('language', 'en', vscode.ConfigurationTarget.Global);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.match(api.getState().tooltip, /CLI startup and initialization.*exit code 4/);
+    assert.doesNotMatch(api.getState().tooltip, /查询失败|阶段|错误/);
+    await config.update('language', 'zh-CN', vscode.ConfigurationTarget.Global);
+    await new Promise(resolve => setTimeout(resolve, 100));
     console.log('PASS: startup failure diagnostics and output command in the real VS Code host');
     const remoteHome = path.join(home, 'remote account');
     await mkdir(remoteHome);
@@ -59,12 +98,20 @@ export async function run(): Promise<void> {
     assert.ok(vscode.extensions.getExtension('jyongli.codex-quota-remote'), 'remote companion must be discovered');
     const oldReply = await vscode.commands.executeCommand<RemoteReply>(REMOTE_QUERY, { protocol: 1, requestId: randomUUID(), timeoutMs: 5000 });
     assert.equal(oldReply.ok, false, 'old clients must not query using the changed settings contract');
-    const reply = await vscode.commands.executeCommand<RemoteReply>(REMOTE_QUERY, { protocol: REMOTE_PROTOCOL, requestId: randomUUID(), timeoutMs: 5000 });
+    const originalRemoteFetch = globalThis.fetch;
+    let failedPublicIpCalls = 0;
+    globalThis.fetch = async () => { failedPublicIpCalls++; throw new Error('IP service unavailable'); };
+    let reply: RemoteReply;
+    try {
+      reply = await vscode.commands.executeCommand<RemoteReply>(REMOTE_QUERY, { protocol: REMOTE_PROTOCOL, requestId: randomUUID(), timeoutMs: 5000, includePublicIp: true });
+    } finally { globalThis.fetch = originalRemoteFetch; }
+    assert.equal(failedPublicIpCalls, 1);
     assert.equal(reply.protocol, REMOTE_PROTOCOL);
     assert.equal(reply.ok, true, reply.ok ? '' : reply.message);
     assert.equal(reply.remoteName, vscode.env.remoteName ?? null);
     assert.ok(reply.hostIp);
     if (reply.ok) {
+      assert.equal(reply.snapshot.publicIp, undefined, 'public IP failure must preserve a successful quota query');
       assert.equal(reply.snapshot.account.type, 'chatgpt');
       assert.equal(reply.snapshot.codexHome, remoteHome);
       assert.deepEqual(reply.snapshot.account, { type: 'chatgpt', email: 'provider@example.test', planType: 'pro' });
@@ -74,7 +121,7 @@ export async function run(): Promise<void> {
     await vscode.commands.executeCommand('codexQuota.refresh');
     assert.match(api.getState().tooltip, /fixture@example.test/);
     assert.equal(api.getState().snapshot?.codexHome, home);
-    console.log('PASS: paired extensions exchange serialized queries and isolate accounts despite shared configuration');
+    console.log('PASS: paired extensions isolate accounts; public IP lookup failure preserves remote quota');
     if (process.env.CODEX_QUOTA_NATIVE_CLI) {
       const nativeHome = path.join(home, 'native home 中文 with spaces');
       await mkdir(nativeHome);

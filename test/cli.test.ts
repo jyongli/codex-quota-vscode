@@ -165,10 +165,10 @@ test('显式使用 stdio，沿用 CLI 配置，不注入数据库与日志覆盖
 });
 
 test('提前退出报告阶段、退出码与安全分类，不暴露原始 stderr', async () => {
-  for (const [exitMethod, phase, stderr, hint] of [
-    ['initialize', '启动并初始化 CLI', 'failed to initialize sqlite state runtime SENSITIVE_MOCK_TOKEN', /数据库/],
-    ['account/rateLimits/read', '读取额度', 'TOML parse error SENSITIVE_MOCK_TOKEN', /配置解析/],
-    ['account/read', '读取账号', 'unknown error SENSITIVE_MOCK_TOKEN', /诊断日志/]
+  for (const [exitMethod, phase, phaseKey, stderr, hint] of [
+    ['initialize', '启动并初始化 CLI', 'phaseInitialize', 'failed to initialize sqlite state runtime SENSITIVE_MOCK_TOKEN', /数据库/],
+    ['account/rateLimits/read', '读取额度', 'phaseQuota', 'TOML parse error SENSITIVE_MOCK_TOKEN', /配置解析/],
+    ['account/read', '读取账号', 'phaseAccount', 'unknown error SENSITIVE_MOCK_TOKEN', /诊断日志/]
   ] as const) {
     await withScenario({ exitMethod, stderr }, async home => {
       await assert.rejects(queryCodex({ cliPath: fixtureCli, codexHome: home, timeoutMs: 3000 }), reason => {
@@ -176,7 +176,7 @@ test('提前退出报告阶段、退出码与安全分类，不暴露原始 stde
         assert.match(reason.message, /退出码 4/);
         assert.match(reason.message, hint);
         assert.ok(!reason.message.includes('SENSITIVE_MOCK_TOKEN'));
-        assert.deepEqual(reason.diagnostic, { phase, cliPath: fixtureCli, codexHome: home, exitCode: 4, signal: null });
+        assert.deepEqual(reason.diagnostic, { phase, phaseKey, cliPath: fixtureCli, codexHome: home, exitCode: 4, signal: null });
         return true;
       });
     });

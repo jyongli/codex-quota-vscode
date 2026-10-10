@@ -1,64 +1,157 @@
 {
   "name": "codex-quota-vscode",
   "displayName": "Codex Quota",
-  "description": "查看所选本地或远程 Codex CLI 账号的 5 小时与周剩余额度。",
-  "version": "0.1.5",
+  "description": "%main.description%",
+  "version": "0.1.6",
   "publisher": "jyongli",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/jyongli/codex-quota-vscode.git" },
-  "engines": { "vscode": "^1.95.0", "node": ">=20" },
-  "categories": ["Other"],
-  "keywords": ["codex", "quota", "status bar"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jyongli/codex-quota-vscode.git"
+  },
+  "engines": {
+    "vscode": "^1.95.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "codex",
+    "quota",
+    "status bar"
+  ],
   "main": "./dist/extension.js",
-  "extensionKind": ["ui"],
-  "activationEvents": ["onStartupFinished"],
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "capabilities": {
-    "untrustedWorkspaces": { "supported": false, "description": "额度查询需要执行当前宿主中的 Codex CLI。" },
-    "virtualWorkspaces": { "supported": false }
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "%main.trust%"
+    },
+    "virtualWorkspaces": {
+      "supported": false
+    }
   },
   "contributes": {
     "commands": [
-      { "command": "codexQuota.menu", "title": "Codex Quota: 打开菜单" },
-      { "command": "codexQuota.refresh", "title": "Codex Quota: 刷新额度" },
-      { "command": "codexQuota.selectEnvironment", "title": "Codex Quota: 选择本地／远程环境" },
-      { "command": "codexQuota.togglePosition", "title": "Codex Quota: 切换状态栏左右位置" },
-      { "command": "codexQuota.showAccount", "title": "Codex Quota: 查看账号与额度来源" },
-      { "command": "codexQuota.showDiagnostics", "title": "Codex Quota: 查看诊断日志" }
+      {
+        "command": "codexQuota.menu",
+        "title": "%menu%"
+      },
+      {
+        "command": "codexQuota.refresh",
+        "title": "%refresh%"
+      },
+      {
+        "command": "codexQuota.selectEnvironment",
+        "title": "%selectEnvironment%"
+      },
+      {
+        "command": "codexQuota.togglePosition",
+        "title": "%togglePosition%"
+      },
+      {
+        "command": "codexQuota.showAccount",
+        "title": "%showAccount%"
+      },
+      {
+        "command": "codexQuota.showDiagnostics",
+        "title": "%showDiagnostics%"
+      },
+      {
+        "command": "codexQuota.selectLanguage",
+        "title": "%selectLanguage%"
+      }
     ],
     "configuration": {
       "title": "Codex Quota",
       "properties": {
         "codexQuota.executionEnvironment": {
-          "type": "string", "enum": ["local", "remote"], "default": "local", "scope": "window",
-          "description": "额度查询环境；切换立即生效。远程查询需要在远程端安装 Codex Quota Remote 查询组件。"
+          "type": "string",
+          "enum": [
+            "local",
+            "remote"
+          ],
+          "default": "local",
+          "scope": "window",
+          "description": "%executionEnvironment%"
         },
         "codexQuota.statusBarPosition": {
-          "type": "string", "enum": ["left", "right"], "default": "right", "scope": "window",
-          "description": "状态栏位置；更改后立即生效。"
+          "type": "string",
+          "enum": [
+            "left",
+            "right"
+          ],
+          "default": "right",
+          "scope": "window",
+          "description": "%statusBarPosition%"
         },
         "codexQuota.cliPath": {
-          "type": "string", "default": "codex", "scope": "application",
-          "description": "本机 Codex 可执行文件路径（或官方 npm CLI 的 .js 入口）；在本地用户设置配置，不接受 shell 命令。"
+          "type": "string",
+          "default": "codex",
+          "scope": "application",
+          "description": "%cliPath%"
         },
         "codexQuota.codexHome": {
-          "type": "string", "default": "", "scope": "application",
-          "description": "本机 Codex 配置目录，留空继承本机 CODEX_HOME，否则使用 ~/.codex。支持 ~/。插件不读取凭据文件。"
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "%codexHome%"
         },
         "codexQuota.remoteCliPath": {
-          "type": "string", "default": "codex", "scope": "machine",
-          "description": "远程宿主的 Codex CLI 路径；在远程用户设置配置，不接受 shell 命令。"
+          "type": "string",
+          "default": "codex",
+          "scope": "machine",
+          "description": "%remoteCliPath%"
         },
         "codexQuota.remoteCodexHome": {
-          "type": "string", "default": "", "scope": "machine",
-          "description": "远程宿主的 Codex 配置目录，留空继承远程 CODEX_HOME，否则使用远程 ~/.codex。支持 ~/。"
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "%remoteCodexHome%"
         },
         "codexQuota.refreshIntervalSeconds": {
-          "type": "integer", "default": 300, "minimum": 60, "maximum": 3600, "scope": "window",
-          "description": "自动刷新间隔（秒）。"
+          "type": "integer",
+          "default": 300,
+          "minimum": 60,
+          "maximum": 3600,
+          "scope": "window",
+          "description": "%refreshIntervalSeconds%"
         },
         "codexQuota.requestTimeoutSeconds": {
-          "type": "integer", "default": 60, "minimum": 5, "maximum": 120, "scope": "window",
-          "description": "整个额度查询的超时（秒）。"
+          "type": "integer",
+          "default": 60,
+          "minimum": 5,
+          "maximum": 120,
+          "scope": "window",
+          "description": "%requestTimeoutSeconds%"
+        },
+        "codexQuota.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "zh-CN",
+            "en"
+          ],
+          "default": "auto",
+          "scope": "window",
+          "description": "%language%",
+          "enumDescriptions": [
+            "%language.auto%",
+            "%language.zh-CN%",
+            "%language.en%"
+          ]
+        },
+        "codexQuota.showPublicIp": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "%showPublicIp%"
         }
       }
     }

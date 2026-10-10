@@ -3,6 +3,8 @@ import { CodexQueryError, queryCodex, Snapshot } from './cli';
 import { ExtensionKinds, hostIpAddress, selectedTarget, ExecutionTarget } from './environment';
 import { accountText, quotaText, QuotaWindow } from './quota';
 import { queryRemote } from './remoteClient';
+import { errorMessage, Language, LanguageSetting, Message, MessageKey, resolveLanguage, t, text } from './i18n';
+import { getPublicIp } from './publicIp';
 
 export interface ExtensionState {
   text: string;
@@ -21,8 +23,8 @@ function singleLine(value: string): string {
   return value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\$\(/g, '(');
 }
 
-function resetText(label: string, window: QuotaWindow | undefined): string {
-  return `${label}重置：${window?.resetsAt ? new Date(window.resetsAt * 1000).toLocaleString() : '接口未提供'}`;
+function resetText(label: string, window: QuotaWindow | undefined, language: Language): string {
+  return t(language, 'reset', { label, value: window?.resetsAt ? new Date(window.resetsAt * 1000).toLocaleString(language) : t(language, 'notProvided') });
 }
 
 class QuotaController implements vscode.Disposable, QuotaApi {
@@ -34,7 +36,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private generation = 0;
   private disposed = false;
   private snapshot?: Snapshot;
-  private error?: string;
+  private error?: Message;
   private loading = false;
   private target: ExecutionTarget;
   private readonly misplacedHost: boolean;
@@ -52,23 +54,25 @@ class QuotaController implements vscode.Disposable, QuotaApi {
       'codexQuota.refresh': () => this.manualRefresh(),
       'codexQuota.selectEnvironment': () => this.selectEnvironment(),
       'codexQuota.togglePosition': () => this.togglePosition(),
+      'codexQuota.selectLanguage': () => this.selectLanguage(),
       'codexQuota.showAccount': () => this.showAccount(),
       'codexQuota.showDiagnostics': () => this.output.show(true)
     };
     for (const [name, action] of Object.entries(commands)) {
       this.subscriptions.push(vscode.commands.registerCommand(name, async () => {
         try { return await action(); } catch {
-          await vscode.window.showErrorMessage('Codex Quota 无法保存设置；请检查用户设置是否可写。');
+          await vscode.window.showErrorMessage(this.t('settingsFailed'));
           return undefined;
         }
       }));
     }
     this.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+      if (event.affectsConfiguration('codexQuota.language')) this.render();
       if (event.affectsConfiguration('codexQuota.statusBarPosition')) {
         this.createBar();
         this.render();
       }
-      if (['executionEnvironment', 'cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'refreshIntervalSeconds', 'requestTimeoutSeconds'].some(key => event.affectsConfiguration(`codexQuota.${key}`))) {
+      if (['executionEnvironment', 'cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'refreshIntervalSeconds', 'requestTimeoutSeconds', 'showPublicIp'].some(key => event.affectsConfiguration(`codexQuota.${key}`))) {
         this.invalidate();
         this.startPolling();
       }
@@ -81,6 +85,10 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   }
 
   private position(): 'left' | 'right' { return this.config().get('statusBarPosition') === 'left' ? 'left' : 'right'; }
+
+  private language(): Language { return resolveLanguage(this.config().get('language', 'auto'), vscode.env.language); }
+
+  private t(key: MessageKey, values?: Message['values']): string { return t(this.language(), key, values); }
 
   private refreshSeconds(): number {
     return Math.max(60, Math.min(3600, Number(this.config().get('refreshIntervalSeconds', 300)) || 300));
@@ -100,15 +108,15 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 
   private settingTarget(key: string): vscode.ConfigurationTarget {
     const inspected = this.config().inspect(key);
-    // Both settings have `window` scope; a single-folder window can expose the
+    // These settings have `window` scope; a single-folder window can expose the
     // same value as workspaceFolderValue, but these settings cannot be written there.
     return inspected?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
   }
 
   private pendingReason(): string | undefined {
-    if (!vscode.workspace.isTrusted) return '请先信任工作区';
-    if (this.misplacedHost) return '主插件需在本地运行';
-    if (this.target === 'remote' && !vscode.env.remoteName) return '未连接远程环境';
+    if (!vscode.workspace.isTrusted) return this.t('trustRequired');
+    if (this.misplacedHost) return this.t('localHostRequired');
+    if (this.target === 'remote' && !vscode.env.remoteName) return this.t('remoteDisconnected');
     return undefined;
   }
 
@@ -138,14 +146,18 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     this.loading = true;
     this.render();
     const timeout = Math.max(5, Math.min(120, Number(this.config().get('requestTimeoutSeconds', 60)) || 60));
+    const includePublicIp = this.config().get('showPublicIp', true);
     const job = (async () => {
       try {
         const snapshot = this.target === 'remote'
-          ? await queryRemote((command, argument) => vscode.commands.executeCommand(command, argument), vscode.env.remoteName!, timeout * 1000, abort.signal)
-          : { ...await queryCodex({
+          ? await queryRemote((command, argument) => vscode.commands.executeCommand(command, argument), vscode.env.remoteName!, timeout * 1000, abort.signal, includePublicIp)
+          : await (async () => {
+            const [quota, publicIp] = await Promise.all([queryCodex({
             cliPath: this.config().get('cliPath', 'codex'),
             codexHome: this.config().get('codexHome', ''), timeoutMs: timeout * 1000
-          }, abort.signal), hostIp: hostIpAddress() };
+            }, abort.signal), includePublicIp ? getPublicIp(abort.signal) : Promise.resolve(undefined)]);
+            return { ...quota, hostIp: hostIpAddress(), publicIp };
+          })();
         if (this.disposed || generation !== this.generation) return;
         this.snapshot = snapshot;
         this.error = undefined;
@@ -154,11 +166,14 @@ class QuotaController implements vscode.Disposable, QuotaApi {
         if (this.disposed || generation !== this.generation) return;
         // Remove old values on failure so they cannot be mistaken for current quota.
         this.snapshot = undefined;
-        this.error = error instanceof Error ? error.message : '额度查询失败。';
-        this.output.appendLine(`[${new Date().toISOString()}] ${this.error}`);
-        if (error instanceof CodexQueryError) this.output.appendLine(JSON.stringify(error.diagnostic, null, 2));
-        if (this.error !== this.notifiedError) void this.notifyFailure(this.error);
+        this.error = errorMessage(error);
+        this.output.appendLine(`[${new Date().toISOString()}] ${text(this.language(), this.error)}`);
+        if (error instanceof CodexQueryError) this.output.appendLine(JSON.stringify({
+          ...error.diagnostic, phase: error.diagnostic.phaseKey ? this.t(error.diagnostic.phaseKey) : error.diagnostic.phase
+        }, null, 2));
+        if (JSON.stringify(this.error) !== this.notifiedError) void this.notifyFailure(this.error);
       } finally {
+        abort.abort();
         if (!this.disposed && generation === this.generation) {
           this.loading = false;
           this.running = undefined;
@@ -172,38 +187,41 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 
   private render(): void {
     if (this.disposed) return;
-    const prefix = `Codex [${this.target === 'local' ? '本地' : '远程'}]`;
+    const language = this.language();
+    const prefix = `Codex [${this.t(this.target)}]`;
     const pending = this.pendingReason();
-    let summary = '等待刷新';
+    let summary = this.t('waiting');
     if (pending) summary = pending;
-    else if (this.loading) summary = '$(sync~spin) 查询中';
-    else if (this.error) summary = '$(warning) 查询失败';
+    else if (this.loading) summary = `$(sync~spin) ${this.t('querying')}`;
+    else if (this.error) summary = `$(warning) ${this.t('failed')}`;
     else if (this.snapshot) {
-      summary = this.snapshot.quota ? quotaText(this.snapshot.quota)
-        : this.snapshot.account.type === 'signedOut' ? '未登录'
-          : this.snapshot.account.type === 'apiKey' ? 'API Key · 无订阅额度' : 'Bedrock · 无订阅额度';
+      summary = this.snapshot.quota ? quotaText(this.snapshot.quota, language)
+        : this.snapshot.account.type === 'signedOut' ? this.t('signedOut')
+          : `${this.snapshot.account.type === 'apiKey' ? 'API Key' : 'Bedrock'} · ${this.t('noSubscription')}`;
     }
     this.bar.text = `${prefix} ${summary}`;
-    const ip = this.snapshot?.hostIp ?? (this.target === 'local' ? hostIpAddress() : '未获取到');
-    const lines = ['Codex 剩余额度', `IP 地址：${singleLine(ip)}`];
+    const rawIp = this.snapshot?.hostIp ?? (this.target === 'local' ? hostIpAddress() : '');
+    const ip = !rawIp || rawIp === '未获取到' ? this.t('notAvailable') : language === 'en' ? rawIp.replace(/、/g, ', ') : rawIp;
+    const lines = [this.t('title'), this.t('ip', { value: singleLine(ip) })];
+    if (this.config().get('showPublicIp', true)) lines.push(this.t('publicIp', { value: this.snapshot?.publicIp ?? this.t('notAvailable') }));
     if (pending) lines.push(pending, this.misplacedHost
-      ? '请在本地端安装新版 Codex Quota 主插件并完成首次升级。'
-      : this.target === 'remote' ? '请连接远程工作区，并在远程端安装 Codex Quota Remote 查询组件。' : '信任工作区后可查询额度。');
-    else if (this.error) lines.push(this.error, '旧额度已清除；可点击状态栏重试或查看设置。');
+      ? this.t('upgradeLocal') : this.target === 'remote' ? this.t('connectRemote') : this.t('trustToQuery'));
+    else if (this.error) lines.push(text(language, this.error), this.t('cleared'));
     else if (this.snapshot) {
       const snapshot = this.snapshot;
-      lines.push(`账号：${singleLine(accountText(snapshot.account))}`);
+      lines.push(this.t('account', { value: singleLine(accountText(snapshot.account, language)) }));
       if (snapshot.quota) {
-        lines.push(`剩余：${quotaText(snapshot.quota)}`);
-        if (snapshot.quota.fiveHour) lines.push(resetText('5 小时额度', snapshot.quota.fiveHour));
-        lines.push(resetText('周额度', snapshot.quota.weekly));
-        if (!snapshot.quota.weekly) lines.push('接口没有返回明确的周窗口；— 表示未知，不能视为 100%。');
-        if (snapshot.quota.accountId) lines.push(`额度账号 ID：${singleLine(snapshot.quota.accountId)}`);
+        lines.push(this.t('remaining', { value: quotaText(snapshot.quota, language) }));
+        if (snapshot.quota.fiveHour) lines.push(resetText(this.t('fiveHourQuota'), snapshot.quota.fiveHour, language));
+        lines.push(resetText(this.t('weeklyQuota'), snapshot.quota.weekly, language));
+        if (!snapshot.quota.weekly) lines.push(this.t('unknownWeek'));
+        if (snapshot.quota.accountId) lines.push(this.t('accountId', { value: singleLine(snapshot.quota.accountId) }));
       }
-      lines.push(`查询时间：${snapshot.checkedAt.toLocaleString()}`);
+      lines.push(this.t('checkedAt', { value: snapshot.checkedAt.toLocaleString(language) }));
     }
     const seconds = this.refreshSeconds();
-    lines.push(`刷新时间间隔：${seconds % 60 === 0 ? `${seconds / 60} 分钟（${seconds} 秒）` : `${seconds} 秒`}`);
+    lines.push(this.t('refreshInterval', { value: seconds === 60 ? this.t('minute', { seconds }) : seconds % 60 === 0
+      ? this.t('minutes', { minutes: seconds / 60, seconds }) : this.t('seconds', { seconds }) }));
     this.bar.tooltip = lines.join('\n');
     this.bar.accessibilityInformation = { label: this.bar.text.replace(/\$\([^)]+\)/g, '') };
   }
@@ -212,11 +230,12 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     return { text: this.bar.text, tooltip: String(this.bar.tooltip ?? ''), alignment: this.position(), target: this.target, snapshot: this.snapshot };
   }
 
-  private async notifyFailure(message: string): Promise<void> {
-    this.notifiedError = message;
+  private async notifyFailure(message: Message): Promise<void> {
+    this.notifiedError = JSON.stringify(message);
     this.notificationCount++;
-    const action = await vscode.window.showErrorMessage(`Codex 额度查询失败：${message}`, '查看诊断');
-    if (action === '查看诊断' && !this.disposed) this.output.show(true);
+    const label = this.t('diagnostics');
+    const action = await vscode.window.showErrorMessage(this.t('queryFailure', { message: text(this.language(), message) }), label);
+    if (action === label && !this.disposed) this.output.show(true);
   }
 
   private async manualRefresh(): Promise<void> {
@@ -233,37 +252,48 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 
   private async selectEnvironment(): Promise<void> {
     const selection = await vscode.window.showQuickPick([
-      { label: '本地', description: '本机 Codex CLI 和登录账号', target: 'local' as const },
-      { label: '远程', description: 'SSH / WSL / Dev Container / Codespaces 宿主中的 Codex CLI 和登录账号', target: 'remote' as const }
-    ], { title: '选择 Codex 额度查询环境', placeHolder: `当前查询环境：${this.target === 'local' ? '本地' : '远程'}` });
+      { label: this.t('local'), description: this.t('localDescription'), target: 'local' as const },
+      { label: this.t('remote'), description: this.t('remoteDescription'), target: 'remote' as const }
+    ], { title: this.t('selectEnvironment'), placeHolder: this.t('currentEnvironment', { value: this.t(this.target) }) });
     if (!selection) return;
     if (selection.target === 'remote' && !vscode.env.remoteName) {
-      await vscode.window.showWarningMessage('请先连接 VS Code 远程工作区，并在远程端安装 Codex Quota Remote 查询组件。');
+      await vscode.window.showWarningMessage(this.t('remoteWarning'));
       return;
     }
     await this.config().update('executionEnvironment', selection.target, this.settingTarget('executionEnvironment'));
     await this.manualRefresh();
   }
 
+  private async selectLanguage(): Promise<void> {
+    const selection = await vscode.window.showQuickPick([
+      { label: this.t('autoLanguage'), language: 'auto' as LanguageSetting },
+      { label: '中文', language: 'zh-CN' as LanguageSetting },
+      { label: 'English', language: 'en' as LanguageSetting }
+    ], { title: this.t('menuLanguage'), placeHolder: this.t('currentLanguage', { value: this.language() === 'en' ? 'English' : '中文' }) });
+    if (!selection) return;
+    await this.config().update('language', selection.language, this.settingTarget('language'));
+    this.render();
+  }
+
   private async showAccount(): Promise<void> {
     await this.refresh();
     const lines = [String(this.bar.tooltip ?? '')];
     if (this.snapshot) {
-      lines.push('账号来源：该执行环境的 Codex CLI 当前登录状态（account/read），不是 VS Code 的 GitHub 账号。',
-        `CLI：${singleLine(this.snapshot.cliPath)}`, `Codex 配置目录：${singleLine(this.snapshot.codexHome)}`,
-        '凭据由 Codex 管理（配置目录或系统凭据存储）；插件不读取 auth.json。');
+      lines.push(this.t('source'), this.t('cli', { value: singleLine(this.snapshot.cliPath) }),
+        this.t('home', { value: singleLine(this.snapshot.codexHome) }), this.t('credentials'));
     }
     await vscode.window.showInformationMessage(lines.join('\n'), { modal: true });
   }
 
   private async menu(): Promise<void> {
     const choice = await vscode.window.showQuickPick([
-      { label: '$(refresh) 刷新额度', command: 'codexQuota.refresh' },
-      { label: '$(account) 查看账号与额度来源', command: 'codexQuota.showAccount' },
-      { label: '$(output) 查看诊断日志', command: 'codexQuota.showDiagnostics' },
-      { label: '$(remote) 选择本地／远程环境', command: 'codexQuota.selectEnvironment' },
-      { label: '$(arrow-swap) 切换状态栏左右位置', command: 'codexQuota.togglePosition' },
-      { label: '$(settings-gear) 打开设置', command: 'settings' }
+      { label: `$(refresh) ${this.t('menuRefresh')}`, command: 'codexQuota.refresh' },
+      { label: `$(account) ${this.t('menuAccount')}`, command: 'codexQuota.showAccount' },
+      { label: `$(output) ${this.t('menuDiagnostics')}`, command: 'codexQuota.showDiagnostics' },
+      { label: `$(remote) ${this.t('menuEnvironment')}`, command: 'codexQuota.selectEnvironment' },
+      { label: `$(arrow-swap) ${this.t('menuPosition')}`, command: 'codexQuota.togglePosition' },
+      { label: `$(globe) ${this.t('menuLanguage')}`, command: 'codexQuota.selectLanguage' },
+      { label: `$(settings-gear) ${this.t('menuSettings')}`, command: 'settings' }
     ], { title: 'Codex Quota' });
     if (!choice) return;
     if (choice.command === 'settings') await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:jyongli.codex-quota-vscode');
