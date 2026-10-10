@@ -1,0 +1,41 @@
+name: Publish GitHub Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_DIR: releases/${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:bundle
+      - run: xvfb-run -a npm run test:vscode
+      - name: Verify the tested VSIX
+        run: |
+          cd "$RELEASE_DIR"
+          sha256sum --check ./*.sha256
+      - name: Create release and upload VSIX
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            "$RELEASE_DIR"/*.vsix "$RELEASE_DIR"/*.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Codex Quota $RELEASE_TAG" \
+            --notes-file "$RELEASE_DIR/NOTES.md"

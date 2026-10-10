@@ -1,0 +1,72 @@
+{
+  "name": "codex-quota-vscode",
+  "displayName": "Codex Quota",
+  "description": "查看所选本地或远程 Codex CLI 账号的 5 小时与周剩余额度。",
+  "version": "0.1.0",
+  "publisher": "jyongli",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/jyongli/codex-quota-vscode.git" },
+  "engines": { "vscode": "^1.95.0", "node": ">=20" },
+  "categories": ["Other"],
+  "keywords": ["codex", "quota", "status bar"],
+  "main": "./dist/extension.js",
+  "extensionKind": ["ui", "workspace"],
+  "activationEvents": ["onStartupFinished"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": false, "description": "额度查询需要执行当前宿主中的 Codex CLI。" },
+    "virtualWorkspaces": { "supported": false }
+  },
+  "contributes": {
+    "commands": [
+      { "command": "codexQuota.menu", "title": "Codex Quota: 打开菜单" },
+      { "command": "codexQuota.refresh", "title": "Codex Quota: 刷新额度" },
+      { "command": "codexQuota.selectEnvironment", "title": "Codex Quota: 选择本地／远程环境" },
+      { "command": "codexQuota.togglePosition", "title": "Codex Quota: 切换状态栏左右位置" },
+      { "command": "codexQuota.showAccount", "title": "Codex Quota: 查看账号与额度来源" }
+    ],
+    "configuration": {
+      "title": "Codex Quota",
+      "properties": {
+        "codexQuota.statusBarPosition": {
+          "type": "string", "enum": ["left", "right"], "default": "right", "scope": "window",
+          "description": "状态栏位置；更改后立即生效。"
+        },
+        "codexQuota.cliPath": {
+          "type": "string", "default": "codex", "scope": "machine",
+          "description": "当前执行宿主上的 Codex 可执行文件路径（或官方 npm CLI 的 .js 入口）；不接受 shell 命令。"
+        },
+        "codexQuota.codexHome": {
+          "type": "string", "default": "", "scope": "machine",
+          "description": "当前宿主的 Codex 配置目录，留空继承 CODEX_HOME，否则使用 ~/.codex。支持 ~/。插件不读取凭据文件。"
+        },
+        "codexQuota.refreshIntervalSeconds": {
+          "type": "integer", "default": 300, "minimum": 60, "maximum": 3600, "scope": "window",
+          "description": "自动刷新间隔（秒）。"
+        },
+        "codexQuota.requestTimeoutSeconds": {
+          "type": "integer", "default": 20, "minimum": 5, "maximum": 120, "scope": "window",
+          "description": "整个额度查询的超时（秒）。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "npm run check && node scripts/build.mjs",
+    "compile-tests": "tsc",
+    "test": "npm run compile-tests && node --test out/test/*.test.js",
+    "test:bundle": "npm run build && npm run compile-tests && node scripts/test-bundle.mjs",
+    "test:native": "npm run compile-tests && node scripts/test-native.mjs",
+    "test:vscode": "npm run build && npm run compile-tests && node scripts/test-vscode.cjs",
+    "vscode:prepublish": "npm run build",
+    "package": "node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.0",
+    "@types/vscode": "1.95.0",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "3.7.1",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}
