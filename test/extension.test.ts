@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { QuotaApi } from '../src/extension';
 import type * as VSCode from 'vscode';
 import { cleanup, fixtureCli, readTrace, scenarioHome } from './helpers';
+import { hostIpAddress } from '../src/environment';
 
 type Listener = (event: { affectsConfiguration(key: string): boolean }) => void;
 interface Bar {
@@ -115,9 +116,17 @@ test('扩展激活、命令注册、状态栏、账号来源与即时左右切�
     assert.equal(state.commands.size, 6);
     assert.equal(h.api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
     assert.match(h.api.getState().tooltip, /fixture@example.test/);
-    assert.match(h.api.getState().tooltip, /不是 VS Code 的 GitHub 账号/);
+    assert.ok(h.api.getState().tooltip.includes(`IP 地址：${hostIpAddress()}`));
     assert.match(h.api.getState().tooltip, /5 小时额度重置/);
-    assert.ok(h.api.getState().tooltip.includes(h.home));
+    assert.match(h.api.getState().tooltip, /刷新时间间隔：5 分钟（300 秒）/);
+    assert.doesNotMatch(h.api.getState().tooltip, /数据来源：|账号来源：|CLI：|Codex 配置目录：|凭据由 Codex/);
+    await mock.commands.executeCommand('codexQuota.showAccount');
+    assert.match(state.messages[0], /不是 VS Code 的 GitHub 账号/);
+    assert.ok(state.messages[0].includes(h.home));
+    state.settings.refreshIntervalSeconds = 90;
+    fire('codexQuota.refreshIntervalSeconds');
+    await h.api.refresh();
+    assert.match(h.api.getState().tooltip, /刷新时间间隔：90 秒/);
     await mock.commands.executeCommand('codexQuota.togglePosition');
     assert.equal(h.api.getState().alignment, 'left');
     assert.ok(state.bars[0].disposed);
@@ -211,7 +220,8 @@ test('远程 workspace 宿主读取所在宿主的 CLI，并展示远程来源',
     await h.api.refresh();
     assert.equal(h.api.getState().target, 'remote');
     assert.match(h.api.getState().text, /Codex \[远程\].*75%/);
-    assert.match(h.api.getState().tooltip, /远程 \/ ssh-remote/);
+    assert.ok(h.api.getState().tooltip.includes(`IP 地址：${hostIpAddress()}`));
+    assert.doesNotMatch(h.api.getState().tooltip, /实际执行环境：/);
   } finally { await h.dispose(); }
 });
 
@@ -241,7 +251,7 @@ test('CLI 配置变化取消旧请求，新账号来源不会被旧响应覆盖'
     await h.api.refresh();
     await first;
     assert.match(h.api.getState().tooltip, /new@example.test/);
-    assert.ok(h.api.getState().tooltip.includes(otherHome));
+    assert.equal(h.api.getState().snapshot?.codexHome, otherHome);
     assert.ok(!h.api.getState().tooltip.includes('fixture@example.test'));
   } finally { await h.dispose(); await cleanup(otherHome); }
 });

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseAccount, parseQuota, quotaText, accountText } from '../src/quota';
-import { activeTarget, selectedTarget, withTarget } from '../src/environment';
+import { activeTarget, hostIpAddress, selectedTarget, withTarget } from '../src/environment';
 
 const window = (usedPercent: number, windowDurationMins: number | null) => ({ usedPercent, windowDurationMins, resetsAt: 2_000_000_000 });
 
@@ -73,4 +73,23 @@ test('环境切换保留其他扩展设置，不修改原对象', () => {
   assert.equal(selectedTarget(settings, 'jyongli.codex-quota-vscode'), 'local');
   assert.equal(selectedTarget(withTarget(changed, 'jyongli.codex-quota-vscode', 'local'), 'jyongli.codex-quota-vscode'), 'local');
   assert.deepEqual(settings, { 'other.extension': ['workspace'] });
+});
+
+test('宿主 IP 排除回环，优先 IPv4，多网卡去重且兼容数字 family', () => {
+  assert.equal(hostIpAddress({
+    loopback: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
+    ethernet: [
+      { address: 'fe80::1', family: 'IPv6', internal: false },
+      { address: '192.168.1.10', family: 'IPv4', internal: false }
+    ],
+    vpn: [{ address: '10.0.0.2', family: 4, internal: false }],
+    duplicate: [{ address: '192.168.1.10', family: 'IPv4', internal: false }],
+    unavailable: undefined
+  }), '192.168.1.10、10.0.0.2');
+});
+
+test('宿主 IP 支持仅 IPv6 和无可用网卡，回环不冒充宿主地址', () => {
+  assert.equal(hostIpAddress({ ethernet: [{ address: 'fd00::2', family: 'IPv6', internal: false }] }), 'fd00::2');
+  assert.equal(hostIpAddress({}), '未获取到');
+  assert.equal(hostIpAddress({ loopback: [{ address: '::1', family: 'IPv6', internal: true }] }), '未获取到');
 });

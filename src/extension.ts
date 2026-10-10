@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { CodexQueryError, queryCodex, Snapshot } from './cli';
-import { activeTarget, ExtensionKinds, hostLabel, selectedTarget, withTarget, ExecutionTarget } from './environment';
+import { activeTarget, ExtensionKinds, hostIpAddress, hostLabel, selectedTarget, withTarget, ExecutionTarget } from './environment';
 import { accountText, quotaText, QuotaWindow } from './quota';
 
 export interface ExtensionState {
@@ -80,6 +80,10 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 
   private position(): 'left' | 'right' { return this.config().get('statusBarPosition') === 'left' ? 'left' : 'right'; }
 
+  private refreshSeconds(): number {
+    return Math.max(60, Math.min(3600, Number(this.config().get('refreshIntervalSeconds', 300)) || 300));
+  }
+
   private createBar(): void {
     this.bar?.dispose();
     this.bar = vscode.window.createStatusBarItem('codexQuota.status', this.position() === 'left' ? vscode.StatusBarAlignment.Left : vscode.StatusBarAlignment.Right, 20);
@@ -111,8 +115,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 
   private startPolling(): void {
     if (this.interval) clearInterval(this.interval);
-    const seconds = Math.max(60, Math.min(3600, Number(this.config().get('refreshIntervalSeconds', 300)) || 300));
-    this.interval = setInterval(() => { void this.refresh(); }, seconds * 1000);
+    this.interval = setInterval(() => { void this.refresh(); }, this.refreshSeconds() * 1000);
     void this.refresh();
   }
 
@@ -158,7 +161,6 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 
   private render(): void {
     if (this.disposed) return;
-    const host = hostLabel(this.target, vscode.env.remoteName);
     const prefix = `Codex [${this.target === 'local' ? '本地' : '远程'}]`;
     const pending = this.pendingReason();
     let summary = '等待刷新';
@@ -171,15 +173,12 @@ class QuotaController implements vscode.Disposable, QuotaApi {
           : this.snapshot.account.type === 'apiKey' ? 'API Key · 无订阅额度' : 'Bedrock · 无订阅额度';
     }
     this.bar.text = `${prefix} ${summary}`;
-    const lines = ['Codex 剩余额度', `实际执行环境：${host}`, '数据来源：官方 Codex CLI app-server / account/rateLimits/read'];
+    const lines = ['Codex 剩余额度', `IP 地址：${hostIpAddress()}`];
     if (pending) lines.push(pending, '使用“选择本地／远程环境”，在目标端安装同一 VSIX 后重载窗口。');
     else if (this.error) lines.push(this.error, '旧额度已清除；可点击状态栏重试或查看设置。');
     else if (this.snapshot) {
       const snapshot = this.snapshot;
-      lines.push(`账号：${singleLine(accountText(snapshot.account))}`,
-        '账号来源：该执行环境的 Codex CLI 当前登录状态（account/read），不是 VS Code 的 GitHub 账号。',
-        `CLI：${singleLine(snapshot.cliPath)}`, `Codex 配置目录：${singleLine(snapshot.codexHome)}`,
-        '凭据由 Codex 管理（配置目录或系统凭据存储）；插件不读取 auth.json。');
+      lines.push(`账号：${singleLine(accountText(snapshot.account))}`);
       if (snapshot.quota) {
         lines.push(`剩余：${quotaText(snapshot.quota)}`);
         if (snapshot.quota.fiveHour) lines.push(resetText('5 小时额度', snapshot.quota.fiveHour));
@@ -189,6 +188,8 @@ class QuotaController implements vscode.Disposable, QuotaApi {
       }
       lines.push(`查询时间：${snapshot.checkedAt.toLocaleString()}`);
     }
+    const seconds = this.refreshSeconds();
+    lines.push(`刷新时间间隔：${seconds % 60 === 0 ? `${seconds / 60} 分钟（${seconds} 秒）` : `${seconds} 秒`}`);
     this.bar.tooltip = lines.join('\n');
     this.bar.accessibilityInformation = { label: this.bar.text.replace(/\$\([^)]+\)/g, '') };
   }
@@ -238,7 +239,13 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 
   private async showAccount(): Promise<void> {
     await this.refresh();
-    await vscode.window.showInformationMessage(String(this.bar.tooltip ?? ''), { modal: true });
+    const lines = [String(this.bar.tooltip ?? '')];
+    if (this.snapshot) {
+      lines.push('账号来源：该执行环境的 Codex CLI 当前登录状态（account/read），不是 VS Code 的 GitHub 账号。',
+        `CLI：${singleLine(this.snapshot.cliPath)}`, `Codex 配置目录：${singleLine(this.snapshot.codexHome)}`,
+        '凭据由 Codex 管理（配置目录或系统凭据存储）；插件不读取 auth.json。');
+    }
+    await vscode.window.showInformationMessage(lines.join('\n'), { modal: true });
   }
 
   private async menu(): Promise<void> {

@@ -20,7 +20,10 @@ export async function run(): Promise<void> {
     await api.refresh();
     assert.equal(api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
     assert.match(api.getState().tooltip, /fixture@example.test/);
-    console.log('PASS: extension activation, real child-process quota, account source');
+    assert.match(api.getState().tooltip, /IP 地址：.+/);
+    assert.match(api.getState().tooltip, /刷新时间间隔：5 分钟（300 秒）/);
+    assert.doesNotMatch(api.getState().tooltip, /数据来源：|账号来源：|CLI：|Codex 配置目录：|凭据由 Codex/);
+    console.log('PASS: extension activation, real child-process quota, compact tooltip with host IP and refresh interval');
     await vscode.commands.executeCommand('codexQuota.togglePosition');
     assert.equal(api.getState().alignment, 'left');
     console.log('PASS: status bar position change');
