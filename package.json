@@ -2,7 +2,7 @@
   "name": "codex-quota-vscode",
   "displayName": "Codex Quota",
   "description": "查看所选本地或远程 Codex CLI 账号的 5 小时与周剩余额度。",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "jyongli",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/jyongli/codex-quota-vscode.git" },
@@ -10,7 +10,7 @@
   "categories": ["Other"],
   "keywords": ["codex", "quota", "status bar"],
   "main": "./dist/extension.js",
-  "extensionKind": ["ui", "workspace"],
+  "extensionKind": ["ui"],
   "activationEvents": ["onStartupFinished"],
   "capabilities": {
     "untrustedWorkspaces": { "supported": false, "description": "额度查询需要执行当前宿主中的 Codex CLI。" },
@@ -28,6 +28,10 @@
     "configuration": {
       "title": "Codex Quota",
       "properties": {
+        "codexQuota.executionEnvironment": {
+          "type": "string", "enum": ["local", "remote"], "default": "local", "scope": "window",
+          "description": "额度查询环境；切换立即生效。远程查询需要在远程端安装 Codex Quota Remote 查询组件。"
+        },
         "codexQuota.statusBarPosition": {
           "type": "string", "enum": ["left", "right"], "default": "right", "scope": "window",
           "description": "状态栏位置；更改后立即生效。"

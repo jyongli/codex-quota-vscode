@@ -58,6 +58,7 @@ class ProcessExitError extends Error {
 }
 
 export interface Snapshot {
+  hostIp?: string;
   account: Account;
   quota?: Quota;
   cliPath: string;

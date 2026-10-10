@@ -1,11 +1,18 @@
 const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
 const { runTests } = require('@vscode/test-electron');
+const testWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-quota-host-workspace-'));
 runTests({
   version: '1.95.3',
   timeout: 15000,
   vscodeExecutablePath: process.env.CODEX_QUOTA_VSCODE_EXECUTABLE,
-  extensionDevelopmentPath: process.env.CODEX_QUOTA_EXTENSION_DEVELOPMENT_PATH ?? path.resolve(__dirname, '..'),
+  extensionDevelopmentPath: [
+    process.env.CODEX_QUOTA_EXTENSION_DEVELOPMENT_PATH ?? path.resolve(__dirname, '..'),
+    process.env.CODEX_QUOTA_REMOTE_DEVELOPMENT_PATH ?? path.resolve(__dirname, '../remote-provider')
+  ],
   extensionTestsPath: path.resolve(__dirname, '../out/test/vscode/suite.js'),
-  launchArgs: ['--no-sandbox', '--disable-gpu', '--skip-welcome', '--skip-release-notes', '--disable-workspace-trust'],
+  launchArgs: [testWorkspace, '--no-sandbox', '--disable-gpu', '--skip-welcome', '--skip-release-notes', '--disable-workspace-trust'],
   extensionTestsEnv: { ELECTRON_RUN_AS_NODE: undefined }
-}).catch(error => { console.error(error.message); process.exitCode = 1; });
+}).catch(error => { console.error(error.message); process.exitCode = 1; })
+  .finally(() => fs.rmSync(testWorkspace, { recursive: true, force: true }));

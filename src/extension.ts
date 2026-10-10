@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { CodexQueryError, queryCodex, Snapshot } from './cli';
-import { activeTarget, ExtensionKinds, hostIpAddress, hostLabel, selectedTarget, withTarget, ExecutionTarget } from './environment';
+import { ExtensionKinds, hostIpAddress, selectedTarget, ExecutionTarget } from './environment';
 import { accountText, quotaText, QuotaWindow } from './quota';
+import { queryRemote } from './remoteClient';
 
 export interface ExtensionState {
   text: string;
@@ -35,16 +36,16 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private snapshot?: Snapshot;
   private error?: string;
   private loading = false;
-  private readonly target: ExecutionTarget;
-  private readonly extensionId: string;
+  private target: ExecutionTarget;
+  private readonly misplacedHost: boolean;
   private readonly output: vscode.OutputChannel;
   private notifiedError?: string;
   private notificationCount = 0;
 
   constructor(context: vscode.ExtensionContext) {
-    this.extensionId = context.extension.id;
     this.output = vscode.window.createOutputChannel('Codex Quota');
-    this.target = activeTarget(context.extension.extensionKind === vscode.ExtensionKind.Workspace, vscode.env.remoteName);
+    this.target = this.selectedEnvironment();
+    this.misplacedHost = context.extension.extensionKind === vscode.ExtensionKind.Workspace && !!vscode.env.remoteName;
     this.createBar();
     const commands: Record<string, () => unknown> = {
       'codexQuota.menu': () => this.menu(),
@@ -67,8 +68,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
         this.createBar();
         this.render();
       }
-      if (event.affectsConfiguration('remote.extensionKind') ||
-          ['cliPath', 'codexHome', 'refreshIntervalSeconds', 'requestTimeoutSeconds'].some(key => event.affectsConfiguration(`codexQuota.${key}`))) {
+      if (['executionEnvironment', 'cliPath', 'codexHome', 'refreshIntervalSeconds', 'requestTimeoutSeconds'].some(key => event.affectsConfiguration(`codexQuota.${key}`))) {
         this.invalidate();
         this.startPolling();
       }
@@ -76,7 +76,9 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     this.startPolling();
   }
 
-  private config(): vscode.WorkspaceConfiguration { return vscode.workspace.getConfiguration('codexQuota'); }
+  private config(): vscode.WorkspaceConfiguration {
+    return vscode.workspace.getConfiguration('codexQuota', vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri);
+  }
 
   private position(): 'left' | 'right' { return this.config().get('statusBarPosition') === 'left' ? 'left' : 'right'; }
 
@@ -92,15 +94,21 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     this.bar.show();
   }
 
-  private hostKinds(): ExtensionKinds {
-    return vscode.workspace.getConfiguration('remote').get<ExtensionKinds>('extensionKind', {});
+  private selectedEnvironment(): ExecutionTarget {
+    return this.config().get<ExecutionTarget>('executionEnvironment', 'local') === 'remote' ? 'remote' : 'local';
+  }
+
+  private settingTarget(key: string): vscode.ConfigurationTarget {
+    const inspected = this.config().inspect(key);
+    // Both settings have `window` scope; a single-folder window can expose the
+    // same value as workspaceFolderValue, but these settings cannot be written there.
+    return inspected?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
   }
 
   private pendingReason(): string | undefined {
     if (!vscode.workspace.isTrusted) return '请先信任工作区';
-    const desired = selectedTarget(this.hostKinds(), this.extensionId);
-    if (desired === 'remote' && !vscode.env.remoteName) return '未连接远程环境';
-    if (desired !== this.target) return '环境切换待重载';
+    if (this.misplacedHost) return '主插件需在本地运行';
+    if (this.target === 'remote' && !vscode.env.remoteName) return '未连接远程环境';
     return undefined;
   }
 
@@ -115,6 +123,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 
   private startPolling(): void {
     if (this.interval) clearInterval(this.interval);
+    this.target = this.selectedEnvironment();
     this.interval = setInterval(() => { void this.refresh(); }, this.refreshSeconds() * 1000);
     void this.refresh();
   }
@@ -131,10 +140,12 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const timeout = Math.max(5, Math.min(120, Number(this.config().get('requestTimeoutSeconds', 60)) || 60));
     const job = (async () => {
       try {
-        const snapshot = await queryCodex({
-          cliPath: this.config().get('cliPath', 'codex'),
-          codexHome: this.config().get('codexHome', ''), timeoutMs: timeout * 1000
-        }, abort.signal);
+        const snapshot = this.target === 'remote'
+          ? await queryRemote((command, argument) => vscode.commands.executeCommand(command, argument), vscode.env.remoteName!, timeout * 1000, abort.signal)
+          : { ...await queryCodex({
+            cliPath: this.config().get('cliPath', 'codex'),
+            codexHome: this.config().get('codexHome', ''), timeoutMs: timeout * 1000
+          }, abort.signal), hostIp: hostIpAddress() };
         if (this.disposed || generation !== this.generation) return;
         this.snapshot = snapshot;
         this.error = undefined;
@@ -173,8 +184,11 @@ class QuotaController implements vscode.Disposable, QuotaApi {
           : this.snapshot.account.type === 'apiKey' ? 'API Key · 无订阅额度' : 'Bedrock · 无订阅额度';
     }
     this.bar.text = `${prefix} ${summary}`;
-    const lines = ['Codex 剩余额度', `IP 地址：${hostIpAddress()}`];
-    if (pending) lines.push(pending, '使用“选择本地／远程环境”，在目标端安装同一 VSIX 后重载窗口。');
+    const ip = this.snapshot?.hostIp ?? (this.target === 'local' ? hostIpAddress() : '未获取到');
+    const lines = ['Codex 剩余额度', `IP 地址：${singleLine(ip)}`];
+    if (pending) lines.push(pending, this.misplacedHost
+      ? '请在本地端安装新版 Codex Quota 主插件并完成首次升级。'
+      : this.target === 'remote' ? '请连接远程工作区，并在远程端安装 Codex Quota Remote 查询组件。' : '信任工作区后可查询额度。');
     else if (this.error) lines.push(this.error, '旧额度已清除；可点击状态栏重试或查看设置。');
     else if (this.snapshot) {
       const snapshot = this.snapshot;
@@ -212,29 +226,23 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   }
 
   private async togglePosition(): Promise<void> {
-    await this.config().update('statusBarPosition', this.position() === 'left' ? 'right' : 'left', vscode.ConfigurationTarget.Global);
+    await this.config().update('statusBarPosition', this.position() === 'left' ? 'right' : 'left', this.settingTarget('statusBarPosition'));
+    const alignment = this.position() === 'left' ? vscode.StatusBarAlignment.Left : vscode.StatusBarAlignment.Right;
+    if (this.bar.alignment !== alignment) { this.createBar(); this.render(); }
   }
 
   private async selectEnvironment(): Promise<void> {
     const selection = await vscode.window.showQuickPick([
       { label: '本地', description: '本机 Codex CLI 和登录账号', target: 'local' as const },
       { label: '远程', description: 'SSH / WSL / Dev Container / Codespaces 宿主中的 Codex CLI 和登录账号', target: 'remote' as const }
-    ], { title: '选择 Codex 额度查询环境', placeHolder: `当前实际执行环境：${hostLabel(this.target, vscode.env.remoteName)}` });
+    ], { title: '选择 Codex 额度查询环境', placeHolder: `当前查询环境：${this.target === 'local' ? '本地' : '远程'}` });
     if (!selection) return;
     if (selection.target === 'remote' && !vscode.env.remoteName) {
-      await vscode.window.showWarningMessage('请先连接 VS Code 远程工作区，并在远程端安装同一 Codex Quota VSIX。');
+      await vscode.window.showWarningMessage('请先连接 VS Code 远程工作区，并在远程端安装 Codex Quota Remote 查询组件。');
       return;
     }
-    const remoteConfig = vscode.workspace.getConfiguration('remote');
-    // Preserve other extensions' user-level host preferences.
-    const globalKinds = remoteConfig.inspect<ExtensionKinds>('extensionKind')?.globalValue ?? {};
-    await remoteConfig.update('extensionKind', withTarget(globalKinds, this.extensionId, selection.target), vscode.ConfigurationTarget.Global);
-    if (selection.target !== this.target) {
-      const action = await vscode.window.showInformationMessage(
-        `已选择${selection.label}。请确认该端已安装同一 VSIX；重载后从该端的 Codex CLI 查询。`, '重载窗口'
-      );
-      if (action === '重载窗口') await vscode.commands.executeCommand('workbench.action.reloadWindow');
-    }
+    await this.config().update('executionEnvironment', selection.target, this.settingTarget('executionEnvironment'));
+    await this.manualRefresh();
   }
 
   private async showAccount(): Promise<void> {
@@ -272,7 +280,19 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   }
 }
 
-export function activate(context: vscode.ExtensionContext): QuotaApi {
+export async function activate(context: vscode.ExtensionContext): Promise<QuotaApi> {
+  // Migrate only this extension's old host preference; other extensions keep their settings.
+  const remote = vscode.workspace.getConfiguration('remote');
+  const kinds = remote.inspect<ExtensionKinds>('extensionKind')?.globalValue ?? {};
+  if (kinds[context.extension.id]) {
+    const config = vscode.workspace.getConfiguration('codexQuota');
+    const inspected = config.inspect('executionEnvironment');
+    if (inspected?.globalValue === undefined && inspected?.workspaceValue === undefined && inspected?.workspaceFolderValue === undefined) {
+      await config.update('executionEnvironment', selectedTarget(kinds, context.extension.id), vscode.ConfigurationTarget.Global);
+    }
+    const otherKinds = { ...kinds }; delete otherKinds[context.extension.id];
+    await remote.update('extensionKind', otherKinds, vscode.ConfigurationTarget.Global);
+  }
   const controller = new QuotaController(context);
   context.subscriptions.push(controller);
   return controller;
