@@ -1,6 +1,6 @@
 # 发布到 VS Code Marketplace
 
-发布 ID：`jyongli.codex-quota-vscode`。商店只发布主 VSIX；远程组件保持内置，由主插件自动安装。
+发布 ID：`jyongli.codex-quota-vscode`。商店发布单个 VSIX、单个扩展 ID；同一个插件可安装在本地与远程端，读取实际安装宿主的 Codex CLI 账号和额度。
 
 ## 首次配置
 
@@ -10,9 +10,9 @@
 
 ## 发布已验证版本
 
-打开 [Publish VS Code Marketplace 工作流](https://github.com/jyongli/codex-quota-vscode/actions/workflows/marketplace.yml)，点击 **Run workflow**，选择 `main`，`release_tag` 填写 **`v0.1.8`**。本版包含语言菜单保存失败的修复，请使用此版本。
+打开 [Publish VS Code Marketplace 工作流](https://github.com/jyongli/codex-quota-vscode/actions/workflows/marketplace.yml)，点击 **Run workflow**，选择 `main`，`release_tag` 填写 **`v0.1.9`**。本版改为按安装环境查询，保留语言菜单保存失败的修复，请使用此版本。
 
-流程检查该标签提交已通过 Windows／Linux CI，下载已发布到 GitHub 的主 VSIX，与标签中记录的 SHA256 对比，并验证主包及内置远程组件。随后通过官方 `vsce verify-pat` 检查发布权限，使用 `vsce publish --packagePath` 上传已有包，不重新打包或发布远程组件。重复运行会跳过商店中已存在的同版本。
+流程检查该标签提交已通过 Windows／Linux CI，下载已发布到 GitHub 的主 VSIX，与标签中记录的 SHA256 对比，并验证单包、workspace 执行清单与机器级路径设置。随后通过官方 `vsce verify-pat` 检查发布权限，使用 `vsce publish --packagePath` 上传已有包，不重新打包。重复运行会跳过商店中已存在的同版本。
 
 缺少 `VSCE_PAT` 时，流程跳过发布，并在运行摘要说明如何配置；这种配置缺失不会产生构建失败邮件。有凭据后的权限错误、包校验错误或上传失败仍会使流程失败，便于定位问题。
 
