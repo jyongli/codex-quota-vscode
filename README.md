@@ -7,7 +7,7 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 - 有明确的 5 小时窗口：`Codex [本地] 5 小时 75% · 周 60%`。
 - 没有 5 小时窗口：`Codex [本地] 周 60%`。
 - 同一个 VSIX 可安装在本地或 SSH／WSL／容器端，读取插件实际运行机器的 CLI、账号和额度。
-- 查询环境由 VS Code 安装位置决定；状态栏左／右位置即时切换。
+- 查询环境由 VS Code 安装位置决定；语言与状态栏左／右位置在设置中配置，立即生效。
 - 支持跟随 VS Code、中文与 English，切换语言立即生效，无须重新查询或重载窗口。
 - 悬浮提示显示执行宿主的内网 IP 与公网出口 IP、账号邮箱与计划、剩余额度、重置时间、查询时间和当前刷新时间间隔。
 - 账号来源、CLI 路径与 Codex 配置目录通过“查看账号与额度来源”菜单查看。
@@ -17,17 +17,17 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 
 要求桌面 VS Code 1.95+。在要查询的机器安装官方 [Codex CLI](https://github.com/openai/codex)，建议 0.116.0+，并用 ChatGPT 账号执行 `codex login`。
 
-从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.9**，只需一个安装包：
+从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.10**，只需一个安装包：
 
-- [Codex Quota 安装包 codex-quota-vscode-0.1.9.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.9/codex-quota-vscode-0.1.9.vsix)
-- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.9/codex-quota-vscode-0.1.9.vsix.sha256)
+- [Codex Quota 安装包 codex-quota-vscode-0.1.10.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.10/codex-quota-vscode-0.1.10.vsix)
+- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.10/codex-quota-vscode-0.1.10.vsix.sha256)
 
 本地窗口在“本地”安装；连接 SSH／WSL／容器后，在对应远程分组安装 **同一个 Codex Quota 插件、同一个 VSIX**。两端使用同一扩展 ID `jyongli.codex-quota-vscode`，各自读取所在机器上已登录的 Codex CLI。
 
 从 VS Code 扩展视图的“…”菜单选择 **Install from VSIX / 从 VSIX 安装**。本地安装也可执行：
 
 ```sh
-code --install-extension codex-quota-vscode-0.1.9.vsix
+code --install-extension codex-quota-vscode-0.1.10.vsix
 ```
 
 VS Code 商店的发布配置与操作见 [Marketplace 发布说明](MARKETPLACE.md)。发布流程使用已通过双平台检查的 GitHub Release 安装包。
@@ -39,8 +39,6 @@ VS Code 商店的发布配置与操作见 [Marketplace 发布说明](MARKETPLACE
 | 命令 | 功能 |
 | --- | --- |
 | Codex Quota: 刷新额度 | 立即查询，重叠请求合并 |
-| Codex Quota: 切换状态栏左右位置 | 更新当前生效的用户／工作区设置并立即生效 |
-| Codex Quota: 选择显示语言 | 跟随 VS Code／中文／English，立即更新当前显示 |
 | Codex Quota: 查看账号与额度来源 | 查询后展示来源详情 |
 | Codex Quota: 查看诊断日志 | 打开 Codex Quota 输出面板，查看失败阶段、CLI 路径、配置目录与退出码 |
 
@@ -59,13 +57,27 @@ VS Code 商店的发布配置与操作见 [Marketplace 发布说明](MARKETPLACE
 
 悬浮提示的 **IP 地址**取自插件实际执行宿主的网卡：本地窗口显示本机地址，远程窗口显示远程宿主地址。排除回环地址，优先 IPv4；多张网卡的地址去重后列出，仅有 IPv6 时显示 IPv6，没有可用地址时显示“未获取到”。另加一行 **公网 IP**：由实际查询宿主通过 HTTPS 请求 `https://api64.ipify.org` 获取出口 IPv4／IPv6，本地安装查询本机、远程安装查询远程机器。地址按宿主缓存在内存中 5 分钟；请求独立超时为 3 秒，失败显示“未获取到”，不影响额度查询，失败结果只缓存 30 秒。服务请求不包含账号、CLI 路径或凭据；显示的是该 HTTPS 请求使用的出口，可能受 VPN／代理配置影响。设置 `codexQuota.showPublicIp: false` 可隐藏该行并停止公网 IP 请求。**刷新时间间隔**与实际轮询使用同一设置，修改后立即更新，例如 `5 分钟（300 秒）` 或 `90 秒`。
 
-## 中英文选择
+## 语言与状态栏位置设置
 
-点击状态栏 → **选择显示语言 / Choose display language**，可选择 **跟随 VS Code、中文、English**。也可设置 `codexQuota.language` 为 `auto`、`zh-CN` 或 `en`。自动模式对中文 VS Code 显示中文，其他界面语言显示英文。
+点击状态栏 → **打开设置 / Open settings**，直接打开 Codex Quota 的设置页面。菜单只保留刷新额度、查看账号与额度来源、查看诊断日志和打开设置。
 
-插件菜单、状态栏、悬浮提示、账号说明及错误提示立即切换，保留当前额度和查询时间，不中断查询、不重载窗口。命令面板标题、扩展说明及原生设置页面文案使用 VS Code 的清单翻译机制，跟随 VS Code 界面语言；独立的插件语言选项控制插件运行时显示。账号邮箱、IP、文件路径和计划名称保留接口原始值。
+- **Language / 显示语言**：跟随 VS Code（`auto`）、中文（`zh-CN`）、English（`en`）。自动模式对中文 VS Code 显示中文，其他界面语言显示英文。
+- **Status Bar Position / 状态栏位置**：左侧（`left`）或右侧（`right`）。
 
-语言菜单先更新当前生效的用户／工作区设置。设置文件含 JSON 错误、未保存修改或不可写时，语言仍立即切换，并保存到 VS Code 的插件存储；工作区选择保存在对应工作区。插件会给出信息提示，诊断日志记录固定的错误类别，不覆盖原设置文件。重新选择语言且设置保存成功，或手动修改语言设置后，清除此前的插件偏好。若设置和插件存储都不能写入，则仍切换当前窗口的语言，并明确提示关闭窗口后不会保留；额度不受影响。
+也可在用户或工作区设置中填写：
+
+```json
+{
+  "codexQuota.language": "zh-CN",
+  "codexQuota.statusBarPosition": "right"
+}
+```
+
+修改设置后立即更新菜单、状态栏、悬浮提示、账号说明和错误提示，保留当前额度与查询时间，不重新查询、不重载窗口。工作区设置优先于用户设置；已有工作区覆盖时，请修改对应工作区设置。
+
+语言与位置统一以 VS Code 设置为准，旧语言菜单保存在插件存储中的偏好不再覆盖设置。设置的保存由 VS Code 原生设置界面管理；若设置文件不可写或含 JSON 错误，需先修复文件再保存。
+
+命令面板标题、扩展说明及原生设置页面文案跟随 VS Code 界面语言；插件语言选项控制运行时显示。账号邮箱、IP、文件路径和计划名称保留接口原始值。
 
 ## 官方接口与账号来源
 
@@ -147,7 +159,7 @@ xvfb-run -a npm run test:vscode
 
 已有官方 VS Code 可执行文件时可使用 `CODEX_QUOTA_VSCODE_EXECUTABLE=/absolute/path/to/code npm run test:vscode`，不再重复下载。
 
-该测试验证激活、额度状态、账号来源、工作区覆盖下的位置切换、API Key 状态、失败诊断，以及单个工作区扩展的实际运行位置和本机路径读取。设置 `CODEX_QUOTA_NATIVE_CLI` 为官方 CLI 入口路径可额外验证真实 VS Code 宿主启动 CLI 并读取临时未登录账号；CI 在 Windows 与 Linux 上均执行此检查。真实远程宿主验证仍需按上面的步骤在实际 SSH / WSL / 容器连接中安装该插件。按 F5 可启动扩展调试宿主。
+该测试验证激活、额度状态、账号来源、工作区覆盖下的位置切换、API Key 状态、失败诊断，原生语言／位置设置即时生效、简化菜单打开设置，以及单个工作区扩展的实际运行位置和本机路径读取。设置 `CODEX_QUOTA_NATIVE_CLI` 为官方 CLI 入口路径可额外验证真实 VS Code 宿主启动 CLI 并读取临时未登录账号；CI 在 Windows 与 Linux 上均执行此检查。真实远程宿主验证仍需按上面的步骤在实际 SSH / WSL / 容器连接中安装该插件。按 F5 可启动扩展调试宿主。
 
 公开打包结果只有 `artifacts/codex-quota-vscode-<版本>.vsix`，同一个包可安装在本地和远程。安装包只包含运行入口、清单、说明与许可证；没有内置第二扩展或运行时 npm 依赖，不包含测试、开发依赖或凭据。打包命令只生成本地文件，不推送或发布。
 

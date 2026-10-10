@@ -3,10 +3,8 @@
   "main.trust": "额度查询需要执行插件实际运行机器上的 Codex CLI。",
   "menu": "Codex Quota: 打开菜单",
   "refresh": "Codex Quota: 刷新额度",
-  "togglePosition": "Codex Quota: 切换状态栏左右位置",
   "showAccount": "Codex Quota: 查看账号与额度来源",
   "showDiagnostics": "Codex Quota: 查看诊断日志",
-  "selectLanguage": "Codex Quota: 选择显示语言",
   "statusBarPosition": "状态栏位置；更改后立即生效。",
   "cliPath": "当前安装环境的 Codex 可执行文件路径（或官方 npm CLI 的 .js 入口）；本地在用户设置、远程在远程用户设置中配置，不接受 shell 命令。",
   "codexHome": "当前安装环境的 Codex 配置目录，留空继承该机器的 CODEX_HOME 或 ~/.codex。支持 ~/。插件不读取凭据文件。",
@@ -20,5 +18,8 @@
   "language.en": "英文。",
   "showPublicIp": "通过 HTTPS ipify 显示插件实际运行机器的公网出口 IP，缓存 5 分钟；获取失败不影响额度查询。",
   "remoteCliPath.deprecated": "请改用远程用户设置中的 codexQuota.cliPath；尚未配置新键时仍兼容此旧设置。",
-  "remoteCodexHome.deprecated": "请改用远程用户设置中的 codexQuota.codexHome；尚未配置新键时仍兼容此旧设置。"
+  "remoteCodexHome.deprecated": "请改用远程用户设置中的 codexQuota.codexHome；尚未配置新键时仍兼容此旧设置。",
+  "language.auto.label": "跟随 VS Code",
+  "position.left": "左侧",
+  "position.right": "右侧"
 }

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { CodexQueryError, queryCodex, Snapshot } from './cli';
 import { activeTarget, hostIpAddress, ExecutionTarget } from './environment';
 import { accountText, quotaText, QuotaWindow } from './quota';
-import { errorMessage, Language, LanguageSetting, Message, MessageKey, resolveLanguage, t, text } from './i18n';
+import { errorMessage, Language, Message, MessageKey, resolveLanguage, t, text } from './i18n';
 import { getPublicIp } from './publicIp';
 
 export interface ExtensionState {
@@ -16,13 +16,6 @@ export interface ExtensionState {
 export interface QuotaApi {
   refresh(): Promise<void>;
   getState(): ExtensionState;
-}
-
-const LANGUAGE_PREFERENCE = 'codexQuota.languagePreference';
-interface LanguagePreference { language: LanguageSetting; configured: LanguageSetting }
-
-function validPreference(value: LanguagePreference | undefined): LanguagePreference | undefined {
-  return value && ['auto', 'zh-CN', 'en'].includes(value.language) && ['auto', 'zh-CN', 'en'].includes(value.configured) ? value : undefined;
 }
 
 function settingFailureHint(error: unknown): MessageKey {
@@ -58,19 +51,14 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private readonly output: vscode.OutputChannel;
   private notifiedError?: string;
   private notificationCount = 0;
-  private languagePreference?: LanguagePreference;
 
-  constructor(private readonly context: vscode.ExtensionContext) {
-    this.languagePreference = validPreference(context.workspaceState.get<LanguagePreference>(LANGUAGE_PREFERENCE))
-      ?? validPreference(context.globalState.get<LanguagePreference>(LANGUAGE_PREFERENCE));
+  constructor(context: vscode.ExtensionContext) {
     this.output = vscode.window.createOutputChannel('Codex Quota');
     this.target = activeTarget(context.extension.extensionKind === vscode.ExtensionKind.Workspace, vscode.env.remoteName);
     this.createBar();
     const commands: Record<string, () => unknown> = {
       'codexQuota.menu': () => this.menu(),
       'codexQuota.refresh': () => this.manualRefresh(),
-      'codexQuota.togglePosition': () => this.togglePosition(),
-      'codexQuota.selectLanguage': () => this.selectLanguage(),
       'codexQuota.showAccount': () => this.showAccount(),
       'codexQuota.showDiagnostics': () => this.output.show(true)
     };
@@ -87,7 +75,6 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     }
     this.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('codexQuota.language')) {
-        this.clearLanguagePreference();
         this.render();
       }
       if (event.affectsConfiguration('codexQuota.statusBarPosition')) {
@@ -109,29 +96,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private position(): 'left' | 'right' { return this.config().get('statusBarPosition') === 'left' ? 'left' : 'right'; }
 
   private language(): Language {
-    const configured = this.config().get<LanguageSetting>('language', 'auto');
-    return resolveLanguage(this.languagePreference?.configured === configured ? this.languagePreference.language : configured, vscode.env.language);
-  }
-
-  private clearLanguagePreference(): void {
-    this.languagePreference = undefined;
-    for (const store of [this.context.workspaceState, this.context.globalState]) {
-      if (store.get(LANGUAGE_PREFERENCE) !== undefined) {
-        void Promise.resolve(store.update(LANGUAGE_PREFERENCE, undefined)).catch(() => {
-          if (!this.disposed) this.output.appendLine(this.t('languagePreferenceCleanupFailed'));
-        });
-      }
-    }
-  }
-
-  private languageNotice(key: 'languageSavedLocally' | 'languageSessionOnly'): void {
-    const label = this.t('diagnostics');
-    const notice = key === 'languageSessionOnly'
-      ? vscode.window.showWarningMessage(this.t(key), label)
-      : vscode.window.showInformationMessage(this.t(key), label);
-    void Promise.resolve(notice).then(choice => {
-      if (choice === label && !this.disposed) this.output.show(true);
-    }).catch(() => {});
+    return resolveLanguage(this.config().get('language', 'auto'), vscode.env.language);
   }
 
   private t(key: MessageKey, values?: Message['values']): string { return t(this.language(), key, values); }
@@ -157,13 +122,6 @@ class QuotaController implements vscode.Disposable, QuotaApi {
       return config.get(legacy, fallback);
     }
     return config.get(key, fallback);
-  }
-
-  private settingTarget(key: string): vscode.ConfigurationTarget {
-    const inspected = this.config().inspect(key);
-    // These settings have `window` scope; a single-folder window can expose the
-    // same value as workspaceFolderValue, but these settings cannot be written there.
-    return inspected?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
   }
 
   private pendingReason(): string | undefined {
@@ -289,41 +247,6 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     if (this.error && before === this.notificationCount) await this.notifyFailure(this.error);
   }
 
-  private async togglePosition(): Promise<void> {
-    await this.config().update('statusBarPosition', this.position() === 'left' ? 'right' : 'left', this.settingTarget('statusBarPosition'));
-    const alignment = this.position() === 'left' ? vscode.StatusBarAlignment.Left : vscode.StatusBarAlignment.Right;
-    if (this.bar.alignment !== alignment) { this.createBar(); this.render(); }
-  }
-
-  private async selectLanguage(): Promise<void> {
-    const selection = await vscode.window.showQuickPick([
-      { label: this.t('autoLanguage'), language: 'auto' as LanguageSetting },
-      { label: '中文', language: 'zh-CN' as LanguageSetting },
-      { label: 'English', language: 'en' as LanguageSetting }
-    ], { title: this.t('menuLanguage'), placeHolder: this.t('currentLanguage', { value: this.language() === 'en' ? 'English' : '中文' }) });
-    if (!selection) return;
-    const target = this.settingTarget('language');
-    try {
-      await this.config().update('language', selection.language, target, false);
-    } catch (error) {
-      const preference: LanguagePreference = { language: selection.language, configured: this.config().get('language', 'auto') };
-      const store = target === vscode.ConfigurationTarget.Workspace ? this.context.workspaceState : this.context.globalState;
-      this.languagePreference = preference;
-      this.render();
-      try { await store.update(LANGUAGE_PREFERENCE, preference); }
-      catch (storageError) {
-        this.output.appendLine(`[${new Date().toISOString()}] codexQuota.language: ${this.t(settingFailureHint(error))} ${this.t(settingFailureHint(storageError))} ${this.t('languageSessionOnly')}`);
-        this.languageNotice('languageSessionOnly');
-        return;
-      }
-      this.output.appendLine(`[${new Date().toISOString()}] codexQuota.language: ${this.t(settingFailureHint(error))} ${this.t('languageSavedLocally')}`);
-      this.languageNotice('languageSavedLocally');
-      return;
-    }
-    this.clearLanguagePreference();
-    this.render();
-  }
-
   private async showAccount(): Promise<void> {
     await this.refresh();
     const lines = [String(this.bar.tooltip ?? '')];
@@ -340,8 +263,6 @@ class QuotaController implements vscode.Disposable, QuotaApi {
       { label: `$(refresh) ${this.t('menuRefresh')}`, command: 'codexQuota.refresh' },
       { label: `$(account) ${this.t('menuAccount')}`, command: 'codexQuota.showAccount' },
       { label: `$(output) ${this.t('menuDiagnostics')}`, command: 'codexQuota.showDiagnostics' },
-      { label: `$(arrow-swap) ${this.t('menuPosition')}`, command: 'codexQuota.togglePosition' },
-      { label: `$(globe) ${this.t('menuLanguage')}`, command: 'codexQuota.selectLanguage' },
       { label: `$(settings-gear) ${this.t('menuSettings')}`, command: 'settings' }
     ], { title: 'Codex Quota' });
     if (!choice) return;

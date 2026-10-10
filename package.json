@@ -2,7 +2,7 @@
   "name": "codex-quota-vscode",
   "displayName": "Codex Quota",
   "description": "%main.description%",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "publisher": "jyongli",
   "license": "MIT",
   "repository": {
@@ -48,20 +48,12 @@
         "title": "%refresh%"
       },
       {
-        "command": "codexQuota.togglePosition",
-        "title": "%togglePosition%"
-      },
-      {
         "command": "codexQuota.showAccount",
         "title": "%showAccount%"
       },
       {
         "command": "codexQuota.showDiagnostics",
         "title": "%showDiagnostics%"
-      },
-      {
-        "command": "codexQuota.selectLanguage",
-        "title": "%selectLanguage%"
       }
     ],
     "configuration": {
@@ -75,7 +67,12 @@
           ],
           "default": "right",
           "scope": "window",
-          "description": "%statusBarPosition%"
+          "description": "%statusBarPosition%",
+          "order": 2,
+          "enumItemLabels": [
+            "%position.left%",
+            "%position.right%"
+          ]
         },
         "codexQuota.cliPath": {
           "type": "string",
@@ -133,6 +130,12 @@
             "%language.auto%",
             "%language.zh-CN%",
             "%language.en%"
+          ],
+          "order": 1,
+          "enumItemLabels": [
+            "%language.auto.label%",
+            "中文",
+            "English"
           ]
         },
         "codexQuota.showPublicIp": {

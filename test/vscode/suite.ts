@@ -1,19 +1,19 @@
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { QuotaApi } from '../../src/extension';
 import { ReadableStream } from 'node:stream/web';
 
-async function chooseLanguage(index: number): Promise<void> {
-  const command = vscode.commands.executeCommand('codexQuota.selectLanguage');
+async function openSettingsFromMenu(): Promise<void> {
+  const command = vscode.commands.executeCommand('codexQuota.menu');
   await new Promise(resolve => setTimeout(resolve, 250));
-  for (let step = 0; step < index; step++) await vscode.commands.executeCommand('workbench.action.quickOpenSelectNext');
+  for (let step = 0; step < 3; step++) await vscode.commands.executeCommand('workbench.action.quickOpenSelectNext');
   await vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem');
   await Promise.race([
     command,
-    new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Language menu command did not complete')), 10000); timer.unref(); })
+    new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Menu command did not complete')), 10000); timer.unref(); })
   ]);
 }
 
@@ -38,7 +38,8 @@ export async function run(): Promise<void> {
     assert.equal(extension.packageJSON.contributes.configuration.properties['codexQuota.cliPath'].scope, 'machine');
     const api = await extension.activate();
     assert.equal(api.getState().target, 'local');
-    assert.ok(!(await vscode.commands.getCommands(true)).includes('codexQuota.selectEnvironment'));
+    const commands = await vscode.commands.getCommands(true);
+    for (const name of ['selectEnvironment', 'togglePosition', 'selectLanguage']) assert.ok(!commands.includes(`codexQuota.${name}`));
     assert.equal(vscode.extensions.getExtension('jyongli.codex-quota-remote'), undefined);
     console.log('PASS: one workspace extension uses its installed host; no environment selector or companion');
     await api.refresh();
@@ -49,34 +50,28 @@ export async function run(): Promise<void> {
     assert.doesNotMatch(api.getState().tooltip, /数据来源：|账号来源：|CLI：|Codex 配置目录：|凭据由 Codex/);
     console.log('PASS: extension activation, real child-process quota, compact tooltip with host IP and refresh interval');
     const checkedAt = api.getState().snapshot?.checkedAt;
-    await chooseLanguage(2);
+    await config.update('language', 'en', vscode.ConfigurationTarget.Global);
     await new Promise(resolve => setTimeout(resolve, 100));
     assert.equal(api.getState().text, 'Codex [Local] 5h 75% · Week 60%');
     assert.match(api.getState().tooltip, /Account: fixture@example.test/);
     assert.equal(api.getState().snapshot?.checkedAt, checkedAt);
-    await config.update('language', 'zh-CN', vscode.ConfigurationTarget.Global);
-    await new Promise(resolve => setTimeout(resolve, 100));
-    console.log('PASS: actual language menu switches immediately and preserves the quota snapshot in the real VS Code host');
     await config.update('language', 'zh-CN', vscode.ConfigurationTarget.Workspace);
-    const settingsFile = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, '.vscode', 'settings.json').fsPath;
-    const validSettings = await readFile(settingsFile, 'utf8');
-    const invalidSettings = validSettings + '\nINVALID_JSON_FOR_LANGUAGE_TEST\n';
-    try {
-      await writeFile(settingsFile, invalidSettings);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      await chooseLanguage(2);
-      assert.equal(api.getState().text, 'Codex [Local] 5h 75% · Week 60%');
-      assert.equal(api.getState().snapshot?.checkedAt, checkedAt);
-      assert.equal(vscode.workspace.getConfiguration('codexQuota').get('language'), 'zh-CN', 'the failed settings update must not be mistaken for a successful write');
-      assert.equal(await readFile(settingsFile, 'utf8'), invalidSettings, 'do not overwrite invalid user settings');
-    } finally {
-      await writeFile(settingsFile, validSettings);
-      await vscode.commands.executeCommand('notifications.clearAll');
-      await chooseLanguage(1);
-      await config.update('language', undefined, vscode.ConfigurationTarget.Workspace);
-    }
+    await new Promise(resolve => setTimeout(resolve, 100));
     assert.match(api.getState().text, /Codex \[本地\]/);
-    console.log('PASS: language menu still switches with invalid settings, preserves quota and leaves the settings file intact');
+    assert.equal(api.getState().snapshot?.checkedAt, checkedAt);
+    await config.update('language', 'en', vscode.ConfigurationTarget.Workspace);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.match(api.getState().text, /Codex \[Local\]/);
+    await config.update('language', 'zh-CN', vscode.ConfigurationTarget.Global);
+    await config.update('language', undefined, vscode.ConfigurationTarget.Workspace);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.match(api.getState().text, /Codex \[本地\]/);
+    assert.equal(api.getState().snapshot?.checkedAt, checkedAt);
+    console.log('PASS: native language settings apply immediately, respect workspace overrides and preserve quota');
+    await openSettingsFromMenu();
+    assert.equal(api.getState().snapshot?.checkedAt, checkedAt);
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    console.log('PASS: the simplified menu opens extension settings from its fourth item');
     const originalFetch = globalThis.fetch;
     let publicIpCalls = 0;
     globalThis.fetch = async input => {
@@ -98,14 +93,18 @@ export async function run(): Promise<void> {
       assert.equal(publicIpCalls, 1);
     } finally { globalThis.fetch = originalFetch; }
     console.log('PASS: public IP display, cache and disable setting in the real VS Code host');
+    const positionSnapshot = api.getState().snapshot;
     await config.update('statusBarPosition', 'left', vscode.ConfigurationTarget.Global);
-    await Promise.race([
-      vscode.commands.executeCommand('codexQuota.togglePosition'),
-      new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Position command did not complete')), 10000); timer.unref(); })
-    ]);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(api.getState().alignment, 'right', 'workspace setting must take priority');
+    await config.update('statusBarPosition', 'left', vscode.ConfigurationTarget.Workspace);
+    await new Promise(resolve => setTimeout(resolve, 100));
     assert.equal(api.getState().alignment, 'left');
-    assert.equal(config.inspect('statusBarPosition')?.workspaceValue, 'left');
-    console.log('PASS: status bar position change despite a workspace override');
+    await config.update('statusBarPosition', 'right', vscode.ConfigurationTarget.Workspace);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(api.getState().alignment, 'right');
+    assert.equal(api.getState().snapshot, positionSnapshot);
+    console.log('PASS: native status bar position settings apply immediately and preserve quota');
     await writeFile(path.join(home, 'scenario.json'), JSON.stringify({ quota: { rateLimits: { secondary: { usedPercent: 10, windowDurationMins: 10080 } } } }));
     await vscode.commands.executeCommand('codexQuota.refresh');
     assert.equal(api.getState().text, 'Codex [本地] 周 90%');

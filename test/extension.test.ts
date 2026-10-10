@@ -26,12 +26,12 @@ interface MockState {
   errors: string[];
   output: { lines: string[]; shown: number; disposed: boolean };
   errorAction?: string;
-  choice?: { target?: 'local' | 'remote'; command?: string; language?: LanguageSetting; label: string };
+  choice?: { command?: string; label: string };
   picks: { label: string }[][];
   reloads: number;
   installs: unknown[];
+  openedSettings?: unknown;
   install?: () => Promise<void>;
-  settingError?: Error;
   storageError?: Error;
   globalPreferences: Record<string, unknown>;
   workspacePreferences: Record<string, unknown>;
@@ -48,7 +48,6 @@ const workspace = {
       }; },
       async update(key: string, value: unknown, target: number) {
         state.updates.push({ key, target });
-        if (state.settingError) throw state.settingError;
         if (section === 'remote') state.kinds = value as MockState['kinds'];
         else if (target === 2) state.workspaceValues[key] = value;
         else state.settings[key] = value;
@@ -96,6 +95,7 @@ const mock = {
         return state.install();
       }
       if (name === 'workbench.action.reloadWindow') state.reloads++;
+      if (name === 'workbench.action.openSettings') state.openedSettings = args[0];
       return state.commands.get(name)?.(...args);
     }
   }
@@ -155,7 +155,7 @@ test('扩展激活、命令注册、状态栏、账号来源与即时左右切�
   const h = await harness({});
   try {
     await h.api.refresh();
-    assert.equal(state.commands.size, 6);
+    assert.equal(state.commands.size, 4);
     assert.equal(h.api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
     assert.match(h.api.getState().tooltip, /fixture@example.test/);
     assert.ok(h.api.getState().tooltip.includes(`IP 地址：${hostIpAddress()}`));
@@ -169,12 +169,12 @@ test('扩展激活、命令注册、状态栏、账号来源与即时左右切�
     fire('codexQuota.refreshIntervalSeconds');
     await h.api.refresh();
     assert.match(h.api.getState().tooltip, /刷新时间间隔：90 秒/);
-    await mock.commands.executeCommand('codexQuota.togglePosition');
+    await workspace.getConfiguration('codexQuota').update('statusBarPosition', h.api.getState().alignment === 'left' ? 'right' : 'left', mock.ConfigurationTarget.Global);
     assert.equal(h.api.getState().alignment, 'left');
     assert.ok(state.bars[0].disposed);
     assert.equal(state.bars[1].alignment, mock.StatusBarAlignment.Left);
     assert.match(h.api.getState().text, /周 60%/);
-    await mock.commands.executeCommand('codexQuota.togglePosition');
+    await workspace.getConfiguration('codexQuota').update('statusBarPosition', h.api.getState().alignment === 'left' ? 'right' : 'left', mock.ConfigurationTarget.Global);
     assert.equal(h.api.getState().alignment, 'right');
   } finally { await h.dispose(); }
   assert.equal(state.commands.size, 0);
@@ -239,28 +239,24 @@ test('并发刷新合并为一个 CLI 查询', async () => {
   } finally { await h.dispose(); }
 });
 
-
-
-
-test('工作区覆盖位置设置时，切换更新生效层并立即改变状态栏', async () => {
+test('原生设置遵循工作区覆盖，修改位置立即生效并保留额度', async () => {
   const h = await harness({}, { workspacePosition: 'right' });
   try {
     await h.api.refresh();
-    state.settings.statusBarPosition = 'left';
-    state.choice = { label: '切换状态栏左右位置', command: 'codexQuota.togglePosition' };
-    await mock.commands.executeCommand('codexQuota.menu');
-    assert.equal(h.api.getState().alignment, 'left');
-    assert.equal(state.workspaceValues.statusBarPosition, 'left');
-    assert.equal(state.updates.at(-1)?.target, mock.ConfigurationTarget.Workspace);
-    await mock.commands.executeCommand('codexQuota.togglePosition');
+    const snapshot = h.api.getState().snapshot;
+    const trace = await readTrace(h.home);
+    const config = workspace.getConfiguration('codexQuota');
+    await config.update('statusBarPosition', 'left', mock.ConfigurationTarget.Global);
     assert.equal(h.api.getState().alignment, 'right');
-    assert.equal(state.settings.statusBarPosition, 'left');
+    await config.update('statusBarPosition', 'left', mock.ConfigurationTarget.Workspace);
+    assert.equal(h.api.getState().alignment, 'left');
+    await config.update('statusBarPosition', 'right', mock.ConfigurationTarget.Workspace);
+    assert.equal(h.api.getState().alignment, 'right');
+    assert.equal(h.api.getState().snapshot, snapshot);
+    assert.deepEqual(await readTrace(h.home), trace);
+    assert.equal(state.reloads, 0);
   } finally { await h.dispose(); }
 });
-
-
-
-
 
 test('CLI 配置变化取消旧请求，新账号来源不会被旧响应覆盖', async () => {
   const h = await harness({ delay: 800 });
@@ -286,29 +282,33 @@ test('不信任工作区时不执行 CLI', async () => {
   } finally { await h.dispose(); }
 });
 
-test('语言菜单立即重译已有额度和菜单，不重查 CLI；工作区覆盖更新生效层', async () => {
+test('原生语言设置立即重译已有额度和菜单，不重查 CLI；工作区覆盖优先', async () => {
   const h = await harness({}, { workspaceLanguage: 'zh-CN' });
   try {
     await h.api.refresh();
     const snapshot = h.api.getState().snapshot;
     const trace = await readTrace(h.home);
-    state.choice = { language: 'en', label: 'English' };
-    await mock.commands.executeCommand('codexQuota.selectLanguage');
-    assert.equal(state.workspaceValues.language, 'en');
-    assert.equal(state.updates.at(-1)?.target, mock.ConfigurationTarget.Workspace);
+    const config = workspace.getConfiguration('codexQuota');
+    await config.update('language', 'en', mock.ConfigurationTarget.Global);
+    assert.match(h.api.getState().text, /Codex \[本地\]/);
+    await config.update('language', 'en', mock.ConfigurationTarget.Workspace);
     assert.equal(h.api.getState().text, 'Codex [Local] 5h 75% · Week 60%');
     assert.match(h.api.getState().tooltip, /Account: fixture@example.test.*ChatGPT/);
     assert.match(h.api.getState().tooltip, /5-hour quota resets:.*\nWeekly quota resets:/);
     assert.match(h.api.getState().tooltip, /Refresh interval: 5 minutes \(300 seconds\)/);
     assert.equal(h.api.getState().snapshot, snapshot);
     assert.deepEqual(await readTrace(h.home), trace);
+    state.choice = { command: 'settings', label: 'Open settings' };
     await mock.commands.executeCommand('codexQuota.menu');
-    assert.ok(state.picks.at(-1)?.some(item => item.label.includes('Choose display language')));
-    assert.doesNotMatch(state.picks.at(-1)!.map(item => item.label).join('\n'), /[\u4e00-\u9fff]/);
+    assert.deepEqual(state.picks.at(-1)!.map(item => item.label), [
+      '$(refresh) Refresh quota', '$(account) View account and quota source',
+      '$(output) View diagnostic log', '$(settings-gear) Open settings'
+    ]);
+    assert.equal(state.openedSettings, '@ext:jyongli.codex-quota-vscode');
+    for (const name of ['selectEnvironment', 'togglePosition', 'selectLanguage']) assert.ok(!state.commands.has(`codexQuota.${name}`));
     await mock.commands.executeCommand('codexQuota.showAccount');
     assert.match(state.messages.at(-1)!, /Account source:.*Codex CLI.*VS Code GitHub/);
-    state.choice = { language: 'zh-CN', label: '中文' };
-    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    await config.update('language', 'zh-CN', mock.ConfigurationTarget.Workspace);
     assert.match(h.api.getState().tooltip, /账号：fixture@example.test/);
     assert.equal(state.reloads, 0);
   } finally { await h.dispose(); }
@@ -324,13 +324,11 @@ test('英文 VS Code 默认跟随英语；手动语言覆盖并即时重译缓�
     assert.equal(state.output.shown, 1);
     assert.equal(JSON.parse(state.output.lines[1]).phase, 'quota read');
     const trace = await readTrace(h.home);
-    state.choice = { language: 'zh-CN', label: '中文' };
-    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    await workspace.getConfiguration('codexQuota').update('language', 'zh-CN', mock.ConfigurationTarget.Global);
     assert.match(h.api.getState().tooltip, /读取额度.*退出码 4.*数据库/);
     assert.deepEqual(await readTrace(h.home), trace);
     assert.equal(state.errors.length, 1);
-    state.choice = { language: 'auto', label: 'Follow VS Code' };
-    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    await workspace.getConfiguration('codexQuota').update('language', 'auto', mock.ConfigurationTarget.Global);
     await mock.commands.executeCommand('codexQuota.refresh');
     assert.equal(state.errors.length, 2);
     assert.match(state.errors[1], /Codex quota query failed:.*quota read/);
@@ -338,110 +336,25 @@ test('英文 VS Code 默认跟随英语；手动语言覆盖并即时重译缓�
   } finally { await h.dispose(); }
 });
 
-test('设置不可写时语言仍立即切换，保存插件偏好并在重新激活后恢复', async () => {
-  const h = await harness({});
-  let preferences: Record<string, unknown>;
+test('显示语言以原生设置为准，旧菜单偏好不覆盖设置或触发插件存储写入', async () => {
+  const preference = { 'codexQuota.languagePreference': { language: 'zh-CN', configured: 'en' } };
+  const h = await harness({}, { language: 'en', globalPreferences: structuredClone(preference), workspacePreferences: structuredClone(preference) });
   try {
+    state.storageError = new Error('EACCES SENSITIVE_MOCK_TOKEN');
     await h.api.refresh();
+    assert.match(h.api.getState().text, /Codex \[Local\]/);
     const snapshot = h.api.getState().snapshot;
     const trace = await readTrace(h.home);
-    state.settingError = new Error('EACCES SENSITIVE_MOCK_TOKEN');
-    state.choice = { language: 'en', label: 'English' };
-    await mock.commands.executeCommand('codexQuota.selectLanguage');
-    assert.equal(h.api.getState().text, 'Codex [Local] 5h 75% · Week 60%');
-    assert.equal(state.settings.language, 'auto');
-    assert.equal(h.api.getState().snapshot, snapshot);
-    assert.deepEqual(await readTrace(h.home), trace);
-    assert.equal(state.errors.length, 0);
-    assert.match(state.messages.at(-1)!, /Language changed and saved/);
-    assert.match(state.output.lines.join('\n'), /not writable/);
-    assert.doesNotMatch(state.output.lines.join('\n'), /SENSITIVE_MOCK_TOKEN/);
-    preferences = structuredClone(state.globalPreferences);
-  } finally { await h.dispose(); }
-  const restored = await harness({}, { globalPreferences: structuredClone(preferences!) });
-  try {
-    await restored.api.refresh();
-    assert.match(restored.api.getState().text, /Codex \[Local\]/);
-    state.settings.language = 'zh-CN'; fire('codexQuota.language');
-    assert.match(restored.api.getState().text, /Codex \[本地\]/);
-    assert.deepEqual(state.globalPreferences, {});
-  } finally { await restored.dispose(); }
-  const changed = await harness({}, { globalPreferences: preferences!, language: 'zh-CN' });
-  try {
-    await changed.api.refresh();
-    assert.match(changed.api.getState().text, /Codex \[本地\]/, 'a preference must not override a subsequently changed setting');
-  } finally { await changed.dispose(); }
-});
-
-test('JSON 错误与未保存设置不阻止语言切换，工作区偏好隔离且正常保存后清除', async () => {
-  for (const [error, hint] of [['Unable to write settings because it contains errors SENSITIVE_MOCK_TOKEN', /JSON/],
-    ['Unable to write settings because the file is dirty SENSITIVE_MOCK_TOKEN', /unsaved changes/]] as const) {
-    const h = await harness({}, { workspaceLanguage: 'zh-CN' });
-    try {
-      await h.api.refresh();
-      const snapshot = h.api.getState().snapshot;
-      state.settingError = new Error(error);
-      state.choice = { language: 'en', label: 'English' };
-      await mock.commands.executeCommand('codexQuota.selectLanguage');
-      assert.equal(h.api.getState().snapshot, snapshot);
-      assert.match(h.api.getState().text, /Codex \[Local\]/);
-      assert.equal(state.workspaceValues.language, 'zh-CN');
-      assert.deepEqual(state.globalPreferences, {});
-      assert.ok(Object.keys(state.workspacePreferences).length);
-      assert.match(state.output.lines.join('\n'), hint);
-      assert.doesNotMatch(state.output.lines.join('\n'), /SENSITIVE_MOCK_TOKEN/);
-      assert.equal(state.errors.length, 0);
-      state.settingError = undefined;
-      state.choice = { language: 'en', label: 'English' };
-      await mock.commands.executeCommand('codexQuota.selectLanguage');
-      assert.equal(state.workspaceValues.language, 'en');
-      assert.deepEqual(state.workspacePreferences, {});
-      assert.match(h.api.getState().text, /Codex \[Local\]/);
-      assert.equal(state.reloads, 0);
-    } finally { await h.dispose(); }
-  }
-});
-
-test('保存失败后的跟随 VS Code 选项仍按界面语言生效，不中断额度查询', async () => {
-  const h = await harness({}, { language: 'en', vscodeLanguage: 'zh-cn' });
-  try {
-    await h.api.refresh();
-    const snapshot = h.api.getState().snapshot;
-    state.settingError = new Error('settings are read-only');
-    state.choice = { language: 'auto', label: 'Follow VS Code' };
-    await mock.commands.executeCommand('codexQuota.selectLanguage');
-    assert.equal(state.settings.language, 'en');
+    await workspace.getConfiguration('codexQuota').update('language', 'auto', mock.ConfigurationTarget.Global);
     assert.match(h.api.getState().text, /Codex \[本地\]/);
     assert.equal(h.api.getState().snapshot, snapshot);
+    assert.deepEqual(await readTrace(h.home), trace);
+    assert.deepEqual(state.globalPreferences, preference);
+    assert.deepEqual(state.workspacePreferences, preference);
     assert.equal(state.errors.length, 0);
+    assert.equal(state.messages.length, 0);
   } finally { await h.dispose(); }
 });
-
-test('设置和插件存储均写入失败时仍切换当前窗口语言，保留额度并明确不会持久化', async () => {
-  const h = await harness({});
-  try {
-    await h.api.refresh();
-    const snapshot = h.api.getState().snapshot;
-    state.settingError = new Error('invalid JSON SENSITIVE_MOCK_TOKEN');
-    state.storageError = new Error('EACCES SENSITIVE_MOCK_TOKEN');
-    state.errorAction = 'View diagnostics';
-    state.choice = { language: 'en', label: 'English' };
-    await mock.commands.executeCommand('codexQuota.selectLanguage');
-    assert.match(h.api.getState().text, /Codex \[Local\]/);
-    assert.equal(h.api.getState().snapshot, snapshot);
-    assert.deepEqual(state.globalPreferences, {});
-    assert.equal(state.errors.length, 0);
-    assert.match(state.messages.at(-1)!, /will not persist/);
-    assert.equal(state.output.shown, 1);
-    assert.match(state.output.lines.join('\n'), /JSON.*not writable/);
-    assert.doesNotMatch(state.output.lines.join('\n') + state.messages.join('\n'), /SENSITIVE_MOCK_TOKEN/);
-  } finally { await h.dispose(); }
-});
-
-
-
-
-
 
 test('同一个扩展在本地和 SSH／WSL／容器／Codespaces 宿主读取各自的 CLI 账号', async () => {
   const unrelated = await scenarioHome({ account: { type: 'chatgpt', email: 'unrelated@example.test', planType: 'plus' } });
@@ -515,8 +428,7 @@ test('远程宿主失败时提供本机诊断，语言切换不重新查询；�
     assert.match(h.api.getState().tooltip, /CLI startup and initialization.*exit code 4.*configuration/);
     assert.match(h.api.getState().text, /Codex \[Remote\]/);
     const trace = await readTrace(h.home);
-    state.choice = { language: 'zh-CN', label: '中文' };
-    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    await workspace.getConfiguration('codexQuota').update('language', 'zh-CN', mock.ConfigurationTarget.Global);
     assert.match(h.api.getState().tooltip, /启动并初始化 CLI.*退出码 4.*配置/);
     assert.deepEqual(await readTrace(h.home), trace);
     assert.doesNotMatch(state.output.lines.join('\n'), /SENSITIVE_MOCK_TOKEN/);
@@ -535,8 +447,7 @@ test('公网 IP 在实际宿主查询，显示开关停止请求且语言切换�
     assert.equal(h.api.getState().snapshot?.publicIp, '203.0.113.42');
     assert.match(h.api.getState().tooltip, /IP 地址：.+\n公网 IP：203\.0\.113\.42/);
     assert.equal(h.api.getState().snapshot?.codexHome, h.home);
-    state.choice = { language: 'en', label: 'English' };
-    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    await workspace.getConfiguration('codexQuota').update('language', 'en', mock.ConfigurationTarget.Global);
     assert.match(h.api.getState().tooltip, /Public IP: 203\.0\.113\.42/);
     const before = calls;
     state.settings.showPublicIp = false; fire('codexQuota.showPublicIp');

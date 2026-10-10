@@ -7,16 +7,16 @@ Codex Quota is a **Visual Studio Code extension** that displays the remaining qu
 - Both quota windows available: `Codex [Local] 5h 75% · Week 60%`.
 - Weekly window only: `Codex [Local] Week 60%`.
 - Install the same VSIX locally or remotely; query that machine’s CLI and signed-in account.
-- Switch status bar side and display language immediately.
+- Configure status bar side and display language in VS Code Settings; changes apply immediately.
 - The tooltip shows the extension host’s network interface IP, public outbound IP, account, quota resets, last check and refresh interval.
 
 ## Installation
 
 Use desktop VS Code 1.95+ and the [official Codex CLI](https://github.com/openai/codex) on each machine you want to query. Sign in with `codex login` using ChatGPT. Codex CLI 0.116.0+ is recommended; Windows and Linux tests also use 0.162.1.
 
-Download version 0.1.9 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
+Download version 0.1.10 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
 
-- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.9/codex-quota-vscode-0.1.9.vsix)
+- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.10/codex-quota-vscode-0.1.10.vsix)
 
 Install using **Extensions → … → Install from VSIX**. In a local window install under **Local**. In an SSH / WSL / Dev Container / desktop Codespaces window install the **same extension, same VSIX** on that remote host using the remote Extensions group or **Install from VSIX**. Install and sign in to Codex CLI on that machine too.
 
@@ -26,13 +26,22 @@ The status bar shows `[Local]` / `[Remote]`, the tooltip shows the machine’s I
 
 Upgrading: the manual environment selector and `codexQuota.executionEnvironment` are removed. The old **Codex Quota Remote** companion can be uninstalled. Remove any custom `remote.extensionKind` override for this extension to apply the new workspace-host model; the extension does not rewrite host overrides. Legacy remote path settings remain a fallback until the new unified settings are configured.
 
-## Display language
+## Language and status bar settings
 
-Click the status bar → **Choose display language** → **Follow VS Code**, **中文**, or **English**. The extension menus, status bar, tooltip, account descriptions and errors update immediately, preserving the quota snapshot without restarting the query or window. Automatic mode uses Chinese for Chinese VS Code locales and English otherwise.
+Click the status bar → **Open settings** to open Codex Quota’s settings. The menu contains only **Refresh quota**, **View account and quota source**, **View diagnostic log**, and **Open settings**.
 
-Command palette titles, extension descriptions and VS Code settings labels follow VS Code’s own display language through manifest localization. The extension’s independent language option controls runtime UI. Actual account emails, IP addresses, paths and plan names remain unchanged.
+Choose **Language**: **Follow VS Code** (`auto`), **中文** (`zh-CN`), or **English** (`en`). Choose **Status Bar Position**: **Left** (`left`) or **Right** (`right`). You can also edit user / workspace settings:
 
-The menu first updates the effective user or workspace setting. If that settings file contains JSON errors, has unsaved changes or is not writable, the language still changes immediately and is saved in VS Code extension storage; workspace choices stay in that workspace. A notice links to diagnostics containing a fixed error category, without overwriting the settings file. A successful subsequent menu save or manual language-setting change clears the fallback preference. If both stores fail, the language changes for the current window with an explicit notice that it will not persist after closing; quota stays intact.
+```json
+{
+  "codexQuota.language": "en",
+  "codexQuota.statusBarPosition": "right"
+}
+```
+
+Changes apply immediately and preserve the current quota snapshot and check time without restarting queries or reloading the window. Workspace settings take priority over user settings; edit the workspace value when an override exists. Automatic language uses Chinese for Chinese VS Code locales and English otherwise.
+
+VS Code Settings is the source of truth. Preferences saved by the old language menu no longer override it. VS Code’s native settings editor handles saving; fix invalid JSON or file permissions before saving if necessary. Command palette titles and native settings labels follow VS Code’s interface language, while the extension language setting controls runtime UI. Account emails, addresses and paths remain unchanged.
 
 ## Host addresses
 
@@ -58,7 +67,7 @@ API Key, Bedrock and signed-out states are identified explicitly. Remaining perc
 | `codexQuota.refreshIntervalSeconds` | `300` | Automatic refresh interval, 60–3600 seconds |
 | `codexQuota.requestTimeoutSeconds` | `60` | Quota query timeout, 5–120 seconds |
 
-CLI paths and configuration directories have machine scope and are excluded from Settings Sync and workspace overrides. Configure `cliPath` / `codexHome` in local user settings for local windows and remote user settings for remote windows; remote hosts do not inherit local machine paths. Remote hosts still accept legacy `remoteCliPath` / `remoteCodexHome` only when the unified settings are unset. Local queries ignore those legacy keys. Menu actions update the effective user or workspace setting. Workspace trust is required to execute CLI. Browser VS Code and virtual workspaces are unsupported.
+CLI paths and configuration directories have machine scope and are excluded from Settings Sync and workspace overrides. Configure `cliPath` / `codexHome` in local user settings for local windows and remote user settings for remote windows; remote hosts do not inherit local machine paths. Remote hosts still accept legacy `remoteCliPath` / `remoteCodexHome` only when the unified settings are unset. Local queries ignore those legacy keys. Language and position follow the effective user / workspace setting. Workspace trust is required to execute CLI. Browser VS Code and virtual workspaces are unsupported.
 
 ## Development
 
