@@ -1,6 +1,6 @@
 # Codex Quota for VS Code
 
-在状态栏查看所选执行环境中 **Codex CLI 当前 ChatGPT 账号**的剩余额度。
+Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS Code 状态栏查看所选执行环境中 **Codex CLI 当前 ChatGPT 账号**的剩余额度。
 
 - 有明确的 5 小时窗口：`Codex [本地] 5 小时 75% · 周 60%`。
 - 没有 5 小时窗口：`Codex [本地] 周 60%`。
