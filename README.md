@@ -30,6 +30,8 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 code --install-extension codex-quota-vscode-0.1.7.vsix
 ```
 
+VS Code 商店的发布配置与操作见 [Marketplace 发布说明](MARKETPLACE.md)。发布流程使用已通过双平台检查的 GitHub Release 安装包。
+
 插件默认在本地执行。CLI 不在 VS Code 进程的 PATH 中时，在用户设置中指定 `codexQuota.cliPath` 的绝对路径；图形界面启动的 VS Code 不一定继承终端的 PATH。
 
 点击状态栏打开菜单，或使用命令面板中的以下命令：

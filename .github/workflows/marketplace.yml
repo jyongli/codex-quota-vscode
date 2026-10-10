@@ -1,0 +1,107 @@
+name: Publish VS Code Marketplace
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing tested GitHub release tag, for example v0.1.7'
+        required: true
+        default: v0.1.7
+        type: string
+  push:
+    branches: [main]
+    paths: ['.github/workflows/marketplace.yml']
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: codex-quota-marketplace
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check Marketplace credential
+        id: credential
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        shell: bash
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          Marketplace publication has not run: repository secret `VSCE_PAT` is missing.
+
+          Create or confirm Marketplace publisher `jyongli`, add an Azure DevOps PAT with **Marketplace: Manage** permissions as repository secret `VSCE_PAT`, then run this workflow manually with tag `v0.1.7`.
+
+          No credentials should be added to source files or pasted into chat.
+          SUMMARY
+          else
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.credential.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Select and verify tested release
+        if: steps.credential.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          release_tag="${REQUESTED_TAG:-v$(node -p "require('./package.json').version")}"
+          [[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid stable release tag'; exit 1; }
+          release_sha="$(git rev-parse "refs/tags/$release_tag^{commit}")"
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --limit 100 \
+            --json headSha,conclusion --jq '.[] | select(.conclusion == "success") | .headSha' \
+            > "$RUNNER_TEMP/codex-quota-successful-tests.txt"
+          grep -Fxq "$release_sha" "$RUNNER_TEMP/codex-quota-successful-tests.txt" || {
+            echo 'This release commit has no successful Windows/Linux Test and package run.'
+            exit 1
+          }
+          release_version="${release_tag#v}"
+          release_file="codex-quota-vscode-$release_version.vsix"
+          release_dir="$RUNNER_TEMP/codex-quota-marketplace-release"
+          mkdir -p "$release_dir"
+          gh release download "$release_tag" --repo "$GITHUB_REPOSITORY" --dir "$release_dir" \
+            --pattern "$release_file" --pattern "$release_file.sha256"
+          git show "$release_tag:releases/$release_tag/$release_file.sha256" \
+            > "$RUNNER_TEMP/codex-quota-committed-checksum.txt"
+          cmp "$RUNNER_TEMP/codex-quota-committed-checksum.txt" "$release_dir/$release_file.sha256"
+          (cd "$release_dir" && sha256sum --check "$release_file.sha256")
+          printf '%s\n' "RELEASE_VERSION=$release_version" "MARKETPLACE_VSIX=$release_dir/$release_file" >> "$GITHUB_ENV"
+      - run: npm ci
+        if: steps.credential.outputs.ready == 'true'
+      - name: Validate the existing single-VSIX package
+        if: steps.credential.outputs.ready == 'true'
+        run: node scripts/verify-marketplace.mjs "$MARKETPLACE_VSIX" "$RELEASE_VERSION"
+      - name: Verify publisher access
+        if: steps.credential.outputs.ready == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --no-install vsce verify-pat jyongli
+      - name: Publish the tested VSIX
+        if: steps.credential.outputs.ready == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --no-install vsce publish --packagePath "$MARKETPLACE_VSIX" --skip-duplicate
+      - name: Record Marketplace submission
+        if: steps.credential.outputs.ready == 'true'
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<SUMMARY
+          Submitted **Codex Quota $RELEASE_VERSION** to the VS Code Marketplace using the existing verified GitHub release VSIX.
+
+          Extension: https://marketplace.visualstudio.com/items?itemName=jyongli.codex-quota-vscode
+
+          Marketplace validation and indexing can take several minutes. Only the main VSIX is published; the remote component remains embedded.
+          SUMMARY
