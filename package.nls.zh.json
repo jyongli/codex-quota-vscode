@@ -8,7 +8,7 @@
   "showAccount": "Codex Quota: 查看账号与额度来源",
   "showDiagnostics": "Codex Quota: 查看诊断日志",
   "selectLanguage": "Codex Quota: 选择显示语言",
-  "executionEnvironment": "额度查询环境；切换立即生效。远程查询需要在远程端安装 Codex Quota Remote 查询组件。",
+  "executionEnvironment": "额度查询环境，切换立即生效；首次远程查询自动安装包内的查询支持，无须另行下载。",
   "statusBarPosition": "状态栏位置；更改后立即生效。",
   "cliPath": "本机 Codex 可执行文件路径（或官方 npm CLI 的 .js 入口）；在本地用户设置配置，不接受 shell 命令。",
   "codexHome": "本机 Codex 配置目录，留空继承本机 CODEX_HOME，否则使用 ~/.codex。支持 ~/。插件不读取凭据文件。",

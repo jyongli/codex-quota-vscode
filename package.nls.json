@@ -8,7 +8,7 @@
   "showAccount": "Codex Quota: View account and quota source",
   "showDiagnostics": "Codex Quota: View diagnostic log",
   "selectLanguage": "Codex Quota: Choose display language",
-  "executionEnvironment": "Quota query environment. Changes apply immediately; remote queries require Codex Quota Remote on the remote host.",
+  "executionEnvironment": "Quota query environment. Changes apply immediately; bundled remote support installs automatically on first use.",
   "statusBarPosition": "Status bar side. Changes apply immediately.",
   "cliPath": "Local Codex executable path (or the official npm CLI .js entry). Configure in local user settings; shell commands are not accepted.",
   "codexHome": "Local Codex configuration directory. Leave empty to inherit local CODEX_HOME or ~/.codex. Supports ~/. Credentials are not read by this extension.",

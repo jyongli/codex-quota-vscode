@@ -2,7 +2,7 @@
   "name": "codex-quota-remote",
   "displayName": "Codex Quota Remote",
   "description": "%remote.description%",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "jyongli",
   "license": "MIT",
   "repository": {
@@ -22,7 +22,8 @@
   ],
   "activationEvents": [
     "onCommand:codexQuota.remote.query",
-    "onCommand:codexQuota.remote.cancel"
+    "onCommand:codexQuota.remote.cancel",
+    "onCommand:codexQuota.remote.ready"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -42,6 +43,10 @@
       {
         "command": "codexQuota.remote.cancel",
         "title": "%remote.cancel%"
+      },
+      {
+        "command": "codexQuota.remote.ready",
+        "title": "%remote.ready%"
       }
     ],
     "menus": {
@@ -52,6 +57,10 @@
         },
         {
           "command": "codexQuota.remote.cancel",
+          "when": "false"
+        },
+        {
+          "command": "codexQuota.remote.ready",
           "when": "false"
         }
       ]

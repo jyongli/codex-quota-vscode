@@ -13,12 +13,13 @@ Codex Quota is a **Visual Studio Code extension** that displays the remaining qu
 
 Use desktop VS Code 1.95+ and the [official Codex CLI](https://github.com/openai/codex) on each machine you want to query. Sign in with `codex login` using ChatGPT. Codex CLI 0.116.0+ is recommended; Windows and Linux tests also use 0.162.1.
 
-Download version 0.1.6 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
+Download version 0.1.7 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
 
-- [Local main extension](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.6/codex-quota-vscode-0.1.6.vsix)
-- [Remote query component](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.6/codex-quota-remote-0.1.6.vsix)
+- [Local main extension](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.7/codex-quota-vscode-0.1.7.vsix)
 
-Install using **Extensions → … → Install from VSIX**. Install the main extension locally. To query SSH / WSL / Dev Container / desktop Codespaces hosts, install the matching Codex Quota Remote VSIX on the remote host, then choose the environment from the status bar menu. Both components must have the same version. Switching queries cancels the previous request and clears its quota without reloading the window. Missing remote components produce an error; the extension does not substitute a local account.
+Install the single VSIX locally using **Extensions → … → Install from VSIX**. Connect to an SSH / WSL / Dev Container / desktop Codespaces workspace, sign in to Codex CLI on that machine, and choose **Remote** from the status bar menu. Missing remote support is installed automatically from the archive embedded in the main VSIX using VS Code’s built-in installer. No second download or Marketplace dependency is required. Already compatible remote components remain in use.
+
+VS Code chooses one execution host for each extension ID, even when installed on both sides. To preserve immediate local / remote switching, the single installer contains a local UI extension and an internal remote workspace component; the internal component remains visible in the remote Extensions view. Switching queries or leaving an installation cancels waiting and clears previous quota without reloading the window. An installation already started by VS Code may finish in the background, but cancelled queries do not resume. Installations wait up to 60 seconds, with a 10-second command-registration limit after installation; failures can be retried by refreshing. Disabled extensions are not forcibly enabled.
 
 ## Display language
 
@@ -44,7 +45,7 @@ API Key, Bedrock and signed-out states are identified explicitly. Remaining perc
 | --- | --- | --- |
 | `codexQuota.language` | `auto` | `auto`, `zh-CN` or `en`; applies immediately |
 | `codexQuota.showPublicIp` | `true` | Retrieve and display the selected host’s public IP |
-| `codexQuota.executionEnvironment` | `local` | `local` or `remote`; applies immediately |
+| `codexQuota.executionEnvironment` | `local` | `local` or `remote`; bundled remote support installs automatically |
 | `codexQuota.statusBarPosition` | `right` | `left` or `right`; applies immediately |
 | `codexQuota.cliPath` | `codex` | Local executable or official npm JS entry; local user setting |
 | `codexQuota.codexHome` | empty | Local directory; inherits local `CODEX_HOME` or `~/.codex` |
@@ -66,4 +67,4 @@ npm run test:bundle
 npm run package
 ```
 
-Native smoke tests use isolated unsigned-in homes. Real VS Code host tests target 1.95.3; Linux CI uses Xvfb. Public IP tests use injected HTTP responses, covering address validation, caching, timeouts and cancellation. See [TESTING.md](TESTING.md) for results and validation limits. Packaging creates both VSIX files under `artifacts/`; it does not publish automatically.
+Native smoke tests use isolated unsigned-in homes. Real VS Code host tests target 1.95.3; Linux CI uses Xvfb. Public IP tests use injected HTTP responses, covering address validation, caching, timeouts and cancellation. See [TESTING.md](TESTING.md) for results and validation limits. Packaging creates one public VSIX under `artifacts/`, containing `bundled/remote.vsix`; it does not publish automatically.

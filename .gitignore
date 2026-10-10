@@ -2,6 +2,7 @@ node_modules/
 out/
 dist/
 artifacts/
+bundled/
 .vscode-test/
 *.vsix
 !releases/*/codex-quota-*.vsix

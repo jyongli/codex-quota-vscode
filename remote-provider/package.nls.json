@@ -2,5 +2,6 @@
   "remote.description": "Codex Quota remote component, reading the Codex CLI account and quota on the workspace host.",
   "remote.trust": "Quota queries execute Codex CLI on the remote host.",
   "remote.query": "Codex Quota Remote: Query service",
-  "remote.cancel": "Codex Quota Remote: Cancel service request"
+  "remote.cancel": "Codex Quota Remote: Cancel service request",
+  "remote.ready": "Codex Quota Remote: Check query service"
 }

@@ -2,5 +2,6 @@
   "remote.description": "Codex Quota 的远程查询组件；在工作区宿主读取所在机器的 Codex CLI 账号与额度。",
   "remote.trust": "额度查询需要执行远程宿主中的 Codex CLI。",
   "remote.query": "Codex Quota Remote: 查询服务",
-  "remote.cancel": "Codex Quota Remote: 取消服务请求"
+  "remote.cancel": "Codex Quota Remote: 取消服务请求",
+  "remote.ready": "Codex Quota Remote: 检查查询服务"
 }

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { CodexQueryError, queryCodex, Snapshot } from './cli';
 import { ExtensionKinds, hostIpAddress, selectedTarget, ExecutionTarget } from './environment';
 import { accountText, quotaText, QuotaWindow } from './quota';
-import { queryRemote } from './remoteClient';
+import { RemoteSupport } from './remoteSupport';
 import { errorMessage, Language, LanguageSetting, Message, MessageKey, resolveLanguage, t, text } from './i18n';
 import { getPublicIp } from './publicIp';
 
@@ -43,8 +43,12 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private readonly output: vscode.OutputChannel;
   private notifiedError?: string;
   private notificationCount = 0;
+  private readonly remoteSupport: RemoteSupport;
+  private preparingRemote = false;
 
   constructor(context: vscode.ExtensionContext) {
+    this.remoteSupport = new RemoteSupport((command, argument) => vscode.commands.executeCommand(command, argument),
+      vscode.Uri.joinPath(context.extensionUri, 'bundled', 'remote.vsix'));
     this.output = vscode.window.createOutputChannel('Codex Quota');
     this.target = this.selectedEnvironment();
     this.misplacedHost = context.extension.extensionKind === vscode.ExtensionKind.Workspace && !!vscode.env.remoteName;
@@ -125,6 +129,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     this.abort?.abort();
     this.running = undefined;
     this.loading = false;
+    this.preparingRemote = false;
     this.snapshot = undefined;
     this.error = undefined;
   }
@@ -150,7 +155,9 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const job = (async () => {
       try {
         const snapshot = this.target === 'remote'
-          ? await queryRemote((command, argument) => vscode.commands.executeCommand(command, argument), vscode.env.remoteName!, timeout * 1000, abort.signal, includePublicIp)
+          ? await this.remoteSupport.query(vscode.env.remoteName!, timeout * 1000, abort.signal, includePublicIp, value => {
+            if (!this.disposed && generation === this.generation) { this.preparingRemote = value; this.render(); }
+          })
           : await (async () => {
             const [quota, publicIp] = await Promise.all([queryCodex({
             cliPath: this.config().get('cliPath', 'codex'),
@@ -192,7 +199,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const pending = this.pendingReason();
     let summary = this.t('waiting');
     if (pending) summary = pending;
-    else if (this.loading) summary = `$(sync~spin) ${this.t('querying')}`;
+    else if (this.loading) summary = `$(sync~spin) ${this.t(this.preparingRemote ? 'preparingRemote' : 'querying')}`;
     else if (this.error) summary = `$(warning) ${this.t('failed')}`;
     else if (this.snapshot) {
       summary = this.snapshot.quota ? quotaText(this.snapshot.quota, language)

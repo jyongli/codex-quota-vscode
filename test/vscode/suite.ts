@@ -7,6 +7,7 @@ import type { QuotaApi } from '../../src/extension';
 import { REMOTE_PROTOCOL, REMOTE_QUERY, RemoteReply } from '../../src/remoteProtocol';
 import { randomUUID } from 'node:crypto';
 import { ReadableStream } from 'node:stream/web';
+import { RemoteSupport } from '../../src/remoteSupport';
 
 export async function run(): Promise<void> {
   const home = await mkdtemp(path.join(tmpdir(), 'codex-quota-vscode-'));
@@ -95,6 +96,10 @@ export async function run(): Promise<void> {
     await writeFile(path.join(remoteHome, 'scenario.json'), JSON.stringify({ account: { type: 'chatgpt', email: 'provider@example.test', planType: 'pro' } }));
     await config.update('remoteCliPath', path.resolve(__dirname, '../../../test/fixtures/codex.cjs'), vscode.ConfigurationTarget.Global);
     await config.update('remoteCodexHome', remoteHome, vscode.ConfigurationTarget.Global);
+    assert.equal(vscode.extensions.getExtension('jyongli.codex-quota-remote'), undefined, 'the helper must not be preinstalled or a development extension');
+    await new RemoteSupport((command, argument) => vscode.commands.executeCommand(command, argument),
+      vscode.Uri.joinPath(extension.extensionUri, 'bundled', 'remote.vsix')).install();
+    console.log('PASS: VS Code installs and loads the embedded remote component without restarting the window');
     assert.ok(vscode.extensions.getExtension('jyongli.codex-quota-remote'), 'remote companion must be discovered');
     const oldReply = await vscode.commands.executeCommand<RemoteReply>(REMOTE_QUERY, { protocol: 1, requestId: randomUUID(), timeoutMs: 5000 });
     assert.equal(oldReply.ok, false, 'old clients must not query using the changed settings contract');

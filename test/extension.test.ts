@@ -29,6 +29,8 @@ interface MockState {
   choice?: { target?: 'local' | 'remote'; command?: string; language?: LanguageSetting; label: string };
   picks: { label: string }[][];
   reloads: number;
+  installs: unknown[];
+  install?: () => Promise<void>;
 }
 let state: MockState;
 const env: { remoteName?: string; language: string } = { language: 'zh-cn' };
@@ -55,6 +57,7 @@ const workspace = {
   }
 };
 const mock = {
+  Uri: { joinPath(base: { fsPath: string }, ...parts: string[]) { return { fsPath: path.join(base.fsPath, ...parts) }; } },
   env, workspace, ExtensionKind: { UI: 1, Workspace: 2 }, StatusBarAlignment: { Left: 1, Right: 2 }, ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
   window: {
     createOutputChannel() {
@@ -79,8 +82,14 @@ const mock = {
     }
   },
   commands: {
+    async getCommands() { return [...state.commands.keys()]; },
     registerCommand(name: string, action: (...args: unknown[]) => unknown) { state.commands.set(name, action); return { dispose() { state.commands.delete(name); } }; },
     async executeCommand(name: string, ...args: unknown[]) {
+      if (name === 'workbench.extensions.installExtension') {
+        state.installs.push(args[0]);
+        if (!state.install) throw new Error('Mock install failure SENSITIVE_MOCK_TOKEN');
+        return state.install();
+      }
       if (name === 'workbench.action.reloadWindow') state.reloads++;
       return state.commands.get(name)?.(...args);
     }
@@ -133,7 +142,7 @@ async function harness(scenario: unknown, options: {
     workspaceValues: { ...(options.workspacePosition ? { statusBarPosition: options.workspacePosition } : {}), ...(options.workspaceLanguage ? { language: options.workspaceLanguage } : {}) }, updates: [],
     kinds: options.legacyKinds ? { 'other.extension': ['ui'], 'jyongli.codex-quota-vscode': ['workspace'] } : {},
     listeners: new Set(), commands: new Map(), bars: [], messages: [], errors: [],
-    output: { lines: [], shown: 0, disposed: false }, picks: [], reloads: 0
+    output: { lines: [], shown: 0, disposed: false }, picks: [], reloads: 0, installs: []
   };
   env.remoteName = options.remoteName;
   env.language = options.vscodeLanguage ?? 'zh-cn';
@@ -147,6 +156,7 @@ async function harness(scenario: unknown, options: {
     activateRemote({ extension: { extensionKind: options.providerUi ? 1 : 2 }, subscriptions: remoteSubscriptions } as unknown as VSCode.ExtensionContext);
   }
   const api = await activate({
+    extensionUri: { fsPath: path.resolve(__dirname, '../..') },
     extension: { id: 'jyongli.codex-quota-vscode', extensionKind: options.workspaceHost ? 2 : 1 },
     globalStorageUri: { fsPath: path.join(home, 'runtime') }, subscriptions
   } as unknown as VSCode.ExtensionContext);
@@ -321,6 +331,11 @@ test('远程组件缺失时清除本地额度，不将本机结果伪装为远�
     assert.match(h.api.getState().tooltip, /远程查询组件/);
     assert.match(h.api.getState().tooltip, /IP 地址：未获取到/);
     assert.equal(state.reloads, 0);
+    assert.equal(state.installs.length, 1);
+    state.choice = { language: 'en', label: 'English' };
+    await mock.commands.executeCommand('codexQuota.selectLanguage');
+    assert.match(h.api.getState().tooltip, /Could not install the bundled remote component/);
+    assert.doesNotMatch(h.api.getState().tooltip, /SENSITIVE_MOCK_TOKEN/);
   } finally { await h.dispose(); }
 });
 
@@ -488,4 +503,50 @@ test('公网 IP 由查询宿主返回，显示开关停止请求且语言切换�
     assert.equal(calls, before);
     assert.match(h.api.getState().tooltip, /fixture@example.test/);
   } finally { await h.dispose(); globalThis.fetch = originalFetch; }
+});
+
+test('只装主插件时，选择远程自动安装包内组件，不重载或更改本地账号', async () => {
+  const h = await harness({}, { remoteName: 'ssh-remote' });
+  const remoteHome = await scenarioHome({ account: { type: 'chatgpt', email: 'embedded@example.test', planType: 'pro' } });
+  const subscriptions: VSCode.Disposable[] = [];
+  try {
+    await h.api.refresh();
+    state.install = async () => {
+      assert.match(h.api.getState().text, /正在准备远程查询/);
+      state.settings.remoteCliPath = fixtureCli; state.settings.remoteCodexHome = remoteHome;
+      activateRemote({ extension: { extensionKind: 2 }, subscriptions } as unknown as VSCode.ExtensionContext);
+    };
+    state.choice = { target: 'remote', label: '远程' };
+    await mock.commands.executeCommand('codexQuota.selectEnvironment');
+    assert.match(h.api.getState().tooltip, /embedded@example.test/);
+    assert.equal(state.installs.length, 1);
+    assert.deepEqual(state.installs[0], { fsPath: path.resolve(__dirname, '../../bundled/remote.vsix') });
+    await h.api.refresh(); assert.equal(state.installs.length, 1);
+    state.choice = { target: 'local', label: '本地' };
+    await mock.commands.executeCommand('codexQuota.selectEnvironment');
+    assert.match(h.api.getState().tooltip, /fixture@example.test/);
+    assert.equal(state.reloads, 0);
+  } finally { for (const subscription of subscriptions) subscription.dispose(); await h.dispose(); await cleanup(remoteHome); }
+});
+
+test('安装远程支持期间切回本地立即结束等待，晚到安装不会覆盖当前账号', async () => {
+  const h = await harness({}, { remoteName: 'ssh-remote' });
+  let complete!: () => void;
+  try {
+    await h.api.refresh();
+    state.install = () => new Promise<void>(resolve => { complete = resolve; });
+    state.choice = { target: 'remote', label: '远程' };
+    const pending = mock.commands.executeCommand('codexQuota.selectEnvironment');
+    for (let attempt = 0; attempt < 100 && !complete; attempt++) await new Promise(resolve => setImmediate(resolve));
+    assert.ok(complete, 'installation must start');
+    state.choice = { target: 'local', label: '本地' };
+    await mock.commands.executeCommand('codexQuota.selectEnvironment'); await pending;
+    assert.match(h.api.getState().tooltip, /fixture@example.test/);
+    state.commands.set('codexQuota.remote.ready', () => ({ protocol: 3, ready: true }));
+    state.commands.set('codexQuota.remote.query', () => { throw new Error('Must not query after cancellation'); });
+    complete(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.api.getState().target, 'local');
+    assert.equal(state.errors.length, 0);
+    assert.equal(state.reloads, 0);
+  } finally { await h.dispose(); }
 });

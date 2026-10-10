@@ -1,12 +1,16 @@
 import * as vscode from 'vscode';
 import { CodexQueryError, queryCodex } from './cli';
 import { hostIpAddress } from './environment';
-import { REMOTE_CANCEL, REMOTE_PROTOCOL, REMOTE_QUERY, RemoteReply, RemoteRequest } from './remoteProtocol';
+import { REMOTE_CANCEL, REMOTE_PROTOCOL, REMOTE_QUERY, REMOTE_READY, RemoteReply, RemoteRequest } from './remoteProtocol';
 import { errorMessage, fail, MessageKey, text } from './i18n';
 import { getPublicIp } from './publicIp';
 
 export function activate(context: vscode.ExtensionContext): void {
   const requests = new Map<string, AbortController>();
+  context.subscriptions.push(vscode.commands.registerCommand(REMOTE_READY, () => ({
+    protocol: REMOTE_PROTOCOL, remoteName: vscode.env.remoteName ?? null,
+    ready: vscode.workspace.isTrusted && (!vscode.env.remoteName || context.extension.extensionKind === vscode.ExtensionKind.Workspace)
+  })));
   context.subscriptions.push(vscode.commands.registerCommand(REMOTE_QUERY, async (request: RemoteRequest): Promise<RemoteReply> => {
     const origin = { protocol: REMOTE_PROTOCOL, remoteName: vscode.env.remoteName ?? null, hostIp: hostIpAddress() };
     const reject = (key: MessageKey): RemoteReply => {

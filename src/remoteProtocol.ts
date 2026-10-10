@@ -3,6 +3,7 @@ import type { Message } from './i18n';
 
 export const REMOTE_QUERY = 'codexQuota.remote.query';
 export const REMOTE_CANCEL = 'codexQuota.remote.cancel';
+export const REMOTE_READY = 'codexQuota.remote.ready';
 export const REMOTE_PROTOCOL = 3;
 export interface RemoteRequest { protocol: number; requestId: string; timeoutMs: number; includePublicIp: boolean }
 export type RemoteReply = {

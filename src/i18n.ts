@@ -27,7 +27,7 @@ const messages = {
   localHostRequired: ['主插件需在本地运行', 'Main extension must run locally'],
   remoteDisconnected: ['未连接远程环境', 'No remote connection'],
   upgradeLocal: ['请在本地端安装新版 Codex Quota 主插件并完成首次升级。', 'Install the updated Codex Quota main extension locally and complete the initial upgrade.'],
-  connectRemote: ['请连接远程工作区，并在远程端安装 Codex Quota Remote 查询组件。', 'Connect to a remote workspace and install Codex Quota Remote on the remote host.'],
+  connectRemote: ['请连接远程工作区；插件会自动准备包内的远程查询支持。', 'Connect to a remote workspace; the extension will prepare its bundled remote support automatically.'],
   trustToQuery: ['信任工作区后可查询额度。', 'Quota queries are available after trusting the workspace.'],
   cleared: ['旧额度已清除；可点击状态栏重试或查看设置。', 'Previous quota has been cleared; click the status bar to retry or open settings.'],
   queryFailure: ['Codex 额度查询失败：{message}', 'Codex quota query failed: {message}'],
@@ -36,8 +36,8 @@ const messages = {
   selectEnvironment: ['选择 Codex 额度查询环境', 'Choose the Codex quota query environment'],
   currentEnvironment: ['当前查询环境：{value}', 'Current query environment: {value}'],
   localDescription: ['本机 Codex CLI 和登录账号', 'Codex CLI and signed-in account on this machine'],
-  remoteDescription: ['SSH / WSL / Dev Container / Codespaces 宿主中的 Codex CLI 和登录账号', 'Codex CLI and signed-in account on the SSH / WSL / Dev Container / Codespaces host'],
-  remoteWarning: ['请先连接 VS Code 远程工作区，并在远程端安装 Codex Quota Remote 查询组件。', 'Connect to a VS Code remote workspace first and install Codex Quota Remote on the remote host.'],
+  remoteDescription: ['远程宿主的 Codex CLI 和账号；首次使用自动安装包内查询支持', 'Remote host’s Codex CLI and account; bundled query support installs automatically on first use'],
+  remoteWarning: ['请先连接 VS Code 远程工作区；首次远程查询会自动安装包内的查询支持。', 'Connect to a VS Code remote workspace first; bundled query support installs automatically on first use.'],
   source: ['账号来源：该执行环境的 Codex CLI 当前登录状态（account/read），不是 VS Code 的 GitHub 账号。', 'Account source: the Codex CLI signed-in account in the selected environment (account/read), separate from the VS Code GitHub account.'],
   cli: ['CLI：{value}', 'CLI: {value}'], home: ['Codex 配置目录：{value}', 'Codex configuration directory: {value}'],
   credentials: ['凭据由 Codex 管理（配置目录或系统凭据存储）；插件不读取 auth.json。', 'Codex manages credentials in its configuration directory or system credential store; this extension does not read auth.json.'],
@@ -96,13 +96,17 @@ const messages = {
   phaseFind: ['查找 CLI', 'CLI lookup'], phaseInitialize: ['启动并初始化 CLI', 'CLI startup and initialization'],
   phaseAccount: ['读取账号', 'account read'], phaseQuota: ['读取额度', 'quota read'], phaseConfirm: ['确认账号', 'account verification'],
   remoteTimeout: ['远程额度查询超时；请检查远程连接和 Codex Quota Remote 查询组件。', 'The remote quota query timed out; check the connection and Codex Quota Remote component.'],
-  remoteUnavailable: ['远程查询组件未安装、未启用或版本不兼容；请在远程端安装同版本的 Codex Quota Remote。', 'The remote component is missing, disabled or incompatible; install the same version of Codex Quota Remote on the remote host.'],
+  remoteUnavailable: ['远程查询组件未安装、未启用或版本不兼容；插件将尝试准备包内的远程支持。', 'The remote component is missing, disabled or incompatible; the extension will try to prepare its bundled remote support.'],
   remoteWrongHost: ['查询组件未在当前远程宿主运行；请在远程端安装 Codex Quota Remote。', 'The query component is not running on the current remote host; install Codex Quota Remote there.'],
   remoteInvalidData: ['远程查询组件返回的数据无效。', 'The remote query component returned invalid data.'],
-  remoteConnection: ['无法连接远程查询组件；请在远程端安装并启用 Codex Quota Remote。', 'Could not connect to the remote query component; install and enable Codex Quota Remote on the remote host.'],
+  remoteConnection: ['无法连接远程查询组件；请检查远程连接和扩展启用状态。', 'Could not connect to the remote query component; check the remote connection and extension enabled state.'],
   remoteTrust: ['远程查询组件需要在受信任的工作区宿主运行。', 'The remote query component must run in a trusted workspace host.'],
   remoteProtocol: ['远程查询协议版本不兼容；请安装相同版本的主插件和远程查询组件。', 'The remote query protocol is incompatible; install matching versions of the main and remote extensions.'],
-  remoteRequest: ['远程查询请求无效。', 'The remote query request is invalid.']
+  remoteRequest: ['远程查询请求无效。', 'The remote query request is invalid.'],
+  preparingRemote: ['正在准备远程查询', 'Preparing remote queries'],
+  remoteInstallFailed: ['无法安装包内的远程查询组件；请检查远程连接及扩展安装权限后重试。', 'Could not install the bundled remote component; check the remote connection and extension installation permissions, then retry.'],
+  remoteInstallTimeout: ['远程组件安装等待超时；安装可能仍在后台进行，可稍后手动刷新。', 'Timed out waiting for the remote component; installation may still be running in the background. Refresh again later.'],
+  remoteNotReady: ['远程查询组件尚未启用或协议不兼容；请检查远程端的扩展启用状态，稍后刷新。', 'The remote component is not enabled or its protocol is incompatible; check its enabled state on the remote host and refresh later.']
 } as const;
 
 export type MessageKey = keyof typeof messages;
