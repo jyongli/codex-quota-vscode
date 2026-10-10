@@ -54,7 +54,7 @@
     "check": "tsc --noEmit",
     "build": "npm run check && node scripts/build.mjs",
     "compile-tests": "tsc",
-    "test": "npm run compile-tests && node --test out/test/*.test.js",
+    "test": "npm run compile-tests && node scripts/test-unit.mjs",
     "test:bundle": "npm run build && npm run compile-tests && node scripts/test-bundle.mjs",
     "test:native": "npm run compile-tests && node scripts/test-native.mjs",
     "test:vscode": "npm run build && npm run compile-tests && node scripts/test-vscode.cjs",
