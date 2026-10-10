@@ -19,6 +19,7 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,12 +35,19 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/codex-quota-native" --no-package-lock @openai/codex@0.162.1
           node scripts/test-native.mjs "$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js"
           printf '%s\n' "CODEX_QUOTA_NATIVE_CLI=$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js" >> "$GITHUB_ENV"
+      - name: Cache the fixed VS Code test host
+        uses: actions/cache@v4
+        with:
+          path: .vscode-test
+          key: vscode-test-${{ runner.os }}-${{ runner.arch }}-1.95.3
       - run: npm run test:vscode
   release:
     needs: windows
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,6 +73,11 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/codex-quota-native" --no-package-lock @openai/codex@0.162.1
           node scripts/test-native.mjs "$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js"
           printf '%s\n' "CODEX_QUOTA_NATIVE_CLI=$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js" >> "$GITHUB_ENV"
+      - name: Cache the fixed VS Code test host
+        uses: actions/cache@v4
+        with:
+          path: .vscode-test
+          key: vscode-test-${{ runner.os }}-${{ runner.arch }}-1.95.3
       - run: xvfb-run -a npm run test:vscode
       - name: Verify the tested VSIX
         run: |
@@ -84,3 +97,19 @@ jobs:
             --verify-tag \
             --title "Codex Quota $RELEASE_TAG" \
             --notes-file "$RELEASE_DIR/NOTES.md"
+      - name: Cancel superseded active main-branch tests after successful validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --limit 100 \
+            --json databaseId,headSha,status \
+            --jq '.[] | select(.status != "completed") | [.databaseId, .headSha] | @tsv' \
+            > "$RUNNER_TEMP/codex-quota-active-tests.tsv"
+          while IFS=$'\t' read -r stale_run_id stale_run_sha; do
+            if [ "$stale_run_sha" != "$GITHUB_SHA" ] && git merge-base --is-ancestor "$stale_run_sha" "$GITHUB_SHA"; then
+              if ! gh run cancel "$stale_run_id" --repo "$GITHUB_REPOSITORY"; then
+                stale_run_status="$(gh run view "$stale_run_id" --repo "$GITHUB_REPOSITORY" --json status --jq '.status')"
+                [ "$stale_run_status" = completed ] || exit 1
+              fi
+            fi
+          done < "$RUNNER_TEMP/codex-quota-active-tests.tsv"
