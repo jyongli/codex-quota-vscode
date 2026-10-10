@@ -10,7 +10,7 @@
 
 ## 发布已验证版本
 
-打开 [Publish VS Code Marketplace 工作流](https://github.com/jyongli/codex-quota-vscode/actions/workflows/marketplace.yml)，点击 **Run workflow**，选择 `main`，`release_tag` 填写 **`v0.1.7`**。
+打开 [Publish VS Code Marketplace 工作流](https://github.com/jyongli/codex-quota-vscode/actions/workflows/marketplace.yml)，点击 **Run workflow**，选择 `main`，`release_tag` 填写 **`v0.1.8`**。本版包含语言菜单保存失败的修复，请使用此版本。
 
 流程检查该标签提交已通过 Windows／Linux CI，下载已发布到 GitHub 的主 VSIX，与标签中记录的 SHA256 对比，并验证主包及内置远程组件。随后通过官方 `vsce verify-pat` 检查发布权限，使用 `vsce publish --packagePath` 上传已有包，不重新打包或发布远程组件。重复运行会跳过商店中已存在的同版本。
 
@@ -23,3 +23,5 @@ code --install-extension jyongli.codex-quota-vscode
 ```
 
 商店地址：https://marketplace.visualstudio.com/items?itemName=jyongli.codex-quota-vscode
+
+工作流会单独检查公开商店的版本，并在摘要区分“已提交”“公开版本已确认”或“验证／索引仍待完成”。缺少凭据时明确记录未尝试上传。

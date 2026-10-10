@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Existing tested GitHub release tag, for example v0.1.7'
+        description: 'Existing tested GitHub release tag, for example v0.1.8'
         required: true
-        default: v0.1.7
+        default: v0.1.8
         type: string
   push:
     branches: [main]
@@ -36,10 +36,11 @@ jobs:
         run: |
           if [ -z "$VSCE_PAT" ]; then
             echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo '::notice title=Marketplace credential missing::VSCE_PAT is not configured; no upload was attempted.'
             cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
           Marketplace publication has not run: repository secret `VSCE_PAT` is missing.
 
-          Create or confirm Marketplace publisher `jyongli`, add an Azure DevOps PAT with **Marketplace: Manage** permissions as repository secret `VSCE_PAT`, then run this workflow manually with tag `v0.1.7`.
+          Create or confirm Marketplace publisher `jyongli`, add an Azure DevOps PAT with **Marketplace: Manage** permissions as repository secret `VSCE_PAT`, then run this workflow manually with tag `v0.1.8`.
 
           No credentials should be added to source files or pasted into chat.
           SUMMARY
@@ -61,7 +62,7 @@ jobs:
           release_tag="${REQUESTED_TAG:-v$(node -p "require('./package.json').version")}"
           [[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid stable release tag'; exit 1; }
           release_sha="$(git rev-parse "refs/tags/$release_tag^{commit}")"
-          gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --limit 100 \
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --commit "$release_sha" --limit 100 \
             --json headSha,conclusion --jq '.[] | select(.conclusion == "success") | .headSha' \
             > "$RUNNER_TEMP/codex-quota-successful-tests.txt"
           grep -Fxq "$release_sha" "$RUNNER_TEMP/codex-quota-successful-tests.txt" || {
@@ -105,3 +106,28 @@ jobs:
 
           Marketplace validation and indexing can take several minutes. Only the main VSIX is published; the remote component remains embedded.
           SUMMARY
+      - name: Check public Marketplace visibility
+        if: steps.credential.outputs.ready == 'true'
+        shell: bash
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if timeout 20s npx --no-install vsce show jyongli.codex-quota-vscode --json \
+                > "$RUNNER_TEMP/codex-quota-marketplace-item.json" 2>/dev/null && \
+              node - "$RUNNER_TEMP/codex-quota-marketplace-item.json" "$RELEASE_VERSION" <<'JS'
+          const fs = require('node:fs');
+          try {
+            const item = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+            const visible = item?.publisher?.publisherName === 'jyongli' && item.extensionName === 'codex-quota-vscode'
+              && item.versions?.some(version => version.version === process.argv[3]);
+            process.exit(visible ? 0 : 1);
+          } catch { process.exit(1); }
+          JS
+            then
+              echo "::notice title=Marketplace version verified::jyongli.codex-quota-vscode $RELEASE_VERSION is visible in the public gallery."
+              echo "Public Marketplace version verified: $RELEASE_VERSION" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            if [ "$attempt" != 6 ]; then sleep 10; fi
+          done
+          echo '::notice title=Marketplace validation pending::Upload was accepted; public validation or indexing is still pending.'
+          echo 'The package was submitted; the public gallery has not confirmed this version yet.' >> "$GITHUB_STEP_SUMMARY"
