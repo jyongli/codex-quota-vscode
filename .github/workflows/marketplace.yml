@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Existing tested GitHub release tag, for example v0.1.9'
+        description: 'Existing tested GitHub release tag, for example v0.1.10'
         required: true
-        default: v0.1.9
+        default: v0.1.10
         type: string
   push:
     branches: [main]
@@ -40,7 +40,7 @@ jobs:
             cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
           Marketplace publication has not run: repository secret `VSCE_PAT` is missing.
 
-          Create or confirm Marketplace publisher `jyongli`, add an Azure DevOps PAT with **Marketplace: Manage** permissions as repository secret `VSCE_PAT`, then run this workflow manually with tag `v0.1.9`.
+          Create or confirm Marketplace publisher `jyongli`, add an Azure DevOps PAT with **Marketplace: Manage** permissions as repository secret `VSCE_PAT`, then run this workflow manually with tag `v0.1.10`.
 
           No credentials should be added to source files or pasted into chat.
           SUMMARY
