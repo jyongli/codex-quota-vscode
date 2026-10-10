@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     strategy:
@@ -16,6 +20,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,6 +36,11 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/codex-quota-native" --no-package-lock @openai/codex@0.162.1
           node scripts/test-native.mjs "$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js"
           printf '%s\n' "CODEX_QUOTA_NATIVE_CLI=$RUNNER_TEMP/codex-quota-native/node_modules/@openai/codex/bin/codex.js" >> "$GITHUB_ENV"
+      - name: Cache the fixed VS Code test host
+        uses: actions/cache@v4
+        with:
+          path: .vscode-test
+          key: vscode-test-${{ runner.os }}-${{ runner.arch }}-1.95.3
       - if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:vscode
       - if: runner.os == 'Windows'
