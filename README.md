@@ -5,22 +5,23 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 - 有明确的 5 小时窗口：`Codex [本地] 5 小时 75% · 周 60%`。
 - 没有 5 小时窗口：`Codex [本地] 周 60%`。
 - 支持本地与远程执行环境选择，以及状态栏左／右位置即时切换。
-- 悬浮提示显示账号邮箱、计划、实际执行环境、CLI 路径、Codex 配置目录、查询时间和额度重置时间。
+- 悬浮提示显示执行宿主的 IP 地址、账号邮箱与计划、剩余额度、重置时间、查询时间和当前刷新时间间隔。
+- 账号来源、CLI 路径与 Codex 配置目录通过“查看账号与额度来源”菜单查看。
 - 默认每 5 分钟刷新，也可点击状态栏打开菜单手动刷新。
 
 ## 安装与使用
 
 要求桌面 VS Code 1.95+。在要查询的机器安装官方 [Codex CLI](https://github.com/openai/codex)，建议 0.116.0+，并用 ChatGPT 账号执行 `codex login`。
 
-从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 VSIX。**Windows 用户请使用 0.1.2 或更新版本**：查询在后台执行，沿用 CLI 配置，失败时弹出提示并提供诊断日志。0.1.2 包也保存在 [releases/v0.1.2](releases/v0.1.2) 中，可用以下链接直接下载：
+从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 VSIX。建议使用 **0.1.3 或更新版本**：悬浮提示展示宿主 IP 和刷新间隔；查询在后台执行，失败时提供诊断日志。0.1.3 包也保存在 [releases/v0.1.3](releases/v0.1.3) 中，可用以下链接直接下载：
 
-- [codex-quota-vscode-0.1.2.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.2/codex-quota-vscode-0.1.2.vsix)
-- [SHA256 校验文件](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.2/codex-quota-vscode-0.1.2.vsix.sha256)
+- [codex-quota-vscode-0.1.3.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.3/codex-quota-vscode-0.1.3.vsix)
+- [SHA256 校验文件](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.3/codex-quota-vscode-0.1.3.vsix.sha256)
 
 从 VS Code 扩展视图的“…”菜单选择 **Install from VSIX / 从 VSIX 安装**。本地安装也可执行：
 
 ```sh
-code --install-extension codex-quota-vscode-0.1.2.vsix
+code --install-extension codex-quota-vscode-0.1.3.vsix
 ```
 
 插件默认在本地执行。CLI 不在 VS Code 进程的 PATH 中时，在用户设置中指定 `codexQuota.cliPath` 的绝对路径；图形界面启动的 VS Code 不一定继承终端的 PATH。
@@ -42,7 +43,7 @@ code --install-extension codex-quota-vscode-0.1.2.vsix
 1. 本地查询使用本机的 Codex CLI、环境变量、配置目录和系统凭据存储。
 2. 远程查询需要先连接远程工作区，在远程端安装**同一 VSIX**，并在那里安装和登录 Codex CLI。在扩展视图确认目标端已安装；从 VSIX 安装后确认安装位置。
 3. 执行“选择本地／远程环境”，选择目标端，再按提示**重载窗口**。
-4. 悬浮状态栏确认“实际执行环境”及账号来源。远程端的 CLI 路径与配置目录通过 VS Code 的远程用户设置配置。
+4. 通过状态栏的 `[本地]`／`[远程]` 和悬浮提示中的 IP 地址确认所查询的宿主；“查看账号与额度来源”展示账号来源与路径。远程端的 CLI 路径与配置目录通过 VS Code 的远程用户设置配置。
 
 环境选择使用 VS Code 官方 `remote.extensionKind` 设置，只更新 `jyongli.codex-quota-vscode` 这一项，并保留其他扩展的宿主选择。例如：
 
@@ -57,6 +58,8 @@ code --install-extension codex-quota-vscode-0.1.2.vsix
 `["ui"]` 选择本地，`["workspace"]` 选择远程。设置保存到当前用户配置，因此会影响使用该配置的其他窗口；宿主迁移需要重载。插件一次只查询当前宿主，不会同时读取两端账号。未连接远程或尚未重载时会显示提示并停止额度查询。可通过 **Developer: Show Running Extensions** 核实运行位置。
 
 浏览器版 VS Code、纯虚拟工作区及不受信任的工作区不在支持范围内。仅在一个宿主安装插件时，切换前须在另一端安装同一 VSIX。
+
+悬浮提示的 **IP 地址**取自插件实际执行宿主的网卡：本地模式显示本机地址，远程模式显示远程宿主地址。排除回环地址，优先 IPv4；多张网卡的地址去重后列出，仅有 IPv6 时显示 IPv6，没有可用地址时显示“未获取到”。这里显示宿主网卡地址，不调用公网 IP 查询服务。**刷新时间间隔**与实际轮询使用同一设置，修改后立即更新，例如 `5 分钟（300 秒）` 或 `90 秒`。
 
 ## 官方接口与账号来源
 
