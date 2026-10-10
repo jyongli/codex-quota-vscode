@@ -31,6 +31,12 @@ try {
     return true;
   });
   console.log('PASS: native CLI startup failure reports its exit code, initialization phase and safe error classification');
+} catch (error) {
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    const message = `${error.message}${error.diagnostic ? ` ${JSON.stringify(error.diagnostic)}` : ''}`;
+    console.log(`::error title=Native CLI smoke failure::${message.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A')}`);
+  }
+  throw error;
 } finally {
   await rm(testHome, { recursive: true, force: true });
 }

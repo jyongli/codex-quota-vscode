@@ -167,8 +167,9 @@ test('失败主动提示并提供诊断，自动重复错误不刷屏，手动�
     assert.equal(state.output.shown, 1);
     const log = state.output.lines.join('\n');
     assert.match(log, /读取额度/);
-    assert.ok(log.includes(h.home));
-    assert.ok(log.includes('"exitCode": 4'));
+    const diagnostic = JSON.parse(state.output.lines[1]);
+    assert.equal(diagnostic.codexHome, h.home);
+    assert.equal(diagnostic.exitCode, 4);
     assert.ok(!log.includes('SENSITIVE_MOCK_TOKEN'));
     await h.api.refresh();
     assert.equal(state.errors.length, 1);
