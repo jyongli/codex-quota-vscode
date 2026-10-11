@@ -64,17 +64,37 @@ jobs:
           notice('Official IDE commands', json.dumps(manifest.get('contributes', {}).get('commands', []), ensure_ascii=False))
           main = manifest.get('main', '').removeprefix('./')
           source = archive.read('extension/' + main).decode()
-          patterns = [r'CODEX_HOME', r'cliExecutable', r'runCodexInWindowsSubsystemForLinux', r'account/rateLimits/read', r'account/read', r'chatgptAuthTokens', r'exports=', r'exports\.', r'getCodexHome', r'auth\.json', r'globalStorage', r'secrets\.', r'codexHome', r'--listen', r'app-server']
+          patterns = [r'CODEX_HOME', r'cliExecutable', r'runCodexInWindowsSubsystemForLinux', r'account/rateLimits/read', r'account/read', r'chatgptAuthTokens', r'activate:', r'getCodexHome', r'auth\.json', r'secrets\.', r'codexHome', r'app-server', r'function Ib\(', r'function oze\(', r'registerCommand']
           reports = []
-          for index, pattern in enumerate(patterns):
+          for pattern in patterns:
               samples = []
               for match in re.finditer(pattern, source):
-                  snippet = source[max(0,match.start()-220):match.start()+420]
-                  if snippet not in samples:
-                      samples.append(snippet)
-                  if len(samples) == 5:
-                      break
-              reports.append(pattern + ':\n' + '\n'.join(samples))
-          notice('IDE sources', '\n\n'.join(reports))
-          notice('IDE bundle tail', source[-7000:])
+                  snippet = source[max(0,match.start()-160):match.start()+700]
+                  if snippet not in samples: samples.append(snippet)
+                  if len(samples) == 3: break
+              reports.append((pattern, '\n'.join(samples)))
+          import pathlib
+          pathlib.Path('public-ide-reports.json').write_text(json.dumps(reports))
+          PY
+      - name: Report public source integration details
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          path = pathlib.Path('public-ide-reports.json')
+          if path.exists():
+              for title, value in json.loads(path.read_text())[:10]:
+                  value = value.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                  print('::notice title=IDE ' + title + '::' + value)
+          PY
+      - name: Report public source process and host details
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          path = pathlib.Path('public-ide-reports.json')
+          if path.exists():
+              for title, value in json.loads(path.read_text())[10:]:
+                  value = value.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                  print('::notice title=IDE ' + title + '::' + value)
           PY
