@@ -49,8 +49,38 @@ jobs:
       - name: Verify Marketplace publisher and VSIX identity
         shell: bash
         run: |
+          package_name="$(node -p "require('./package.json').name")"
           package_version="$(node -p "require('./package.json').version")"
-          node scripts/verify-marketplace.mjs "artifacts/codex-quota-vscode-$package_version.vsix" "$package_version"
+          node scripts/verify-marketplace.mjs "artifacts/$package_name-$package_version.vsix" "$package_version"
+      - name: Check public Marketplace extension name
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          package_name="$(node -p "require('./package.json').name")"
+          if timeout 30s npx --no-install vsce search "$package_name" --json \
+              > "$RUNNER_TEMP/codex-quota-name-search.json" 2>/dev/null; then
+            node - "$RUNNER_TEMP/codex-quota-name-search.json" <<'JS'
+          const fs = require('node:fs');
+          const { name, publisher } = require('./package.json');
+          let results;
+          try {
+            const raw = fs.readFileSync(process.argv[2], 'utf8').trim();
+            results = raw === 'No matching results' ? [] : JSON.parse(raw);
+            if (!Array.isArray(results)) throw new Error();
+          } catch {
+            console.log('::notice title=Marketplace name check unavailable::Public lookup did not return a usable result; upload validation is still required.');
+            process.exit(0);
+          }
+          const conflicts = results.filter(item => item.extensionName === name && item.publisher?.publisherName !== publisher);
+          if (conflicts.length) {
+            console.log(`::error title=Marketplace name conflict::Extension name ${name} is already published by another publisher.`);
+            process.exit(1);
+          }
+          console.log(`::notice title=Marketplace name lookup::No public extension with exact name ${name} from another publisher was found. This lookup does not reserve the name; upload validation is authoritative.`);
+          JS
+          else
+            echo '::notice title=Marketplace name check unavailable::Public lookup could not complete; upload validation is still required.'
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: codex-quota-vsix-${{ matrix.os }}

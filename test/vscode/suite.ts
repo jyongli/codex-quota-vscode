@@ -30,9 +30,10 @@ export async function run(): Promise<void> {
     await config.update('codexHome', home, vscode.ConfigurationTarget.Global);
     await config.update('statusBarPosition', 'right', vscode.ConfigurationTarget.Global);
     await config.update('statusBarPosition', 'right', vscode.ConfigurationTarget.Workspace);
-    const extension = vscode.extensions.getExtension<QuotaApi>('ujyong.codex-quota-vscode');
+    const extension = vscode.extensions.getExtension<QuotaApi>('ujyong.codex-quota-monitor-ujyong');
     assert.ok(extension, 'extension must be discovered');
     assert.equal(extension.packageJSON.publisher, 'ujyong');
+    assert.equal(extension.packageJSON.name, 'codex-quota-monitor-ujyong');
     // The API reports UI for a local process even when the manifest prefers
     // the workspace host; Workspace means it is executing remotely.
     assert.equal(extension.extensionKind, vscode.ExtensionKind.UI);

@@ -17,20 +17,20 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 
 要求桌面 VS Code 1.95+。插件优先使用所在机器已有的官方 [Codex CLI](https://github.com/openai/codex)（建议 0.116.0+）；默认 `codex` 命令缺失时自动安装。自动安装需要该机器的 npm 和网络。
 
-从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.12**，只需一个安装包：
+从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.13**，只需一个安装包：
 
-- [Codex Quota 安装包 codex-quota-vscode-0.1.12.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.12/codex-quota-vscode-0.1.12.vsix)
-- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.12/codex-quota-vscode-0.1.12.vsix.sha256)
+- [Codex Quota 安装包 codex-quota-monitor-ujyong-0.1.13.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.13/codex-quota-monitor-ujyong-0.1.13.vsix)
+- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.13/codex-quota-monitor-ujyong-0.1.13.vsix.sha256)
 
-本地窗口在“本地”安装；连接 SSH／WSL／容器后，在对应远程分组安装 **同一个 Codex Quota 插件、同一个 VSIX**。两端使用同一扩展 ID `ujyong.codex-quota-vscode`，各自读取所在机器上已登录的 Codex CLI。
+本地窗口在“本地”安装；连接 SSH／WSL／容器后，在对应远程分组安装 **同一个 Codex Quota 插件、同一个 VSIX**。两端使用同一扩展 ID `ujyong.codex-quota-monitor-ujyong`，各自读取所在机器上已登录的 Codex CLI。
 
 从 VS Code 扩展视图的“…”菜单选择 **Install from VSIX / 从 VSIX 安装**。本地安装也可执行：
 
 ```sh
-code --install-extension codex-quota-vscode-0.1.12.vsix
+code --install-extension codex-quota-monitor-ujyong-0.1.13.vsix
 ```
 
-本版 Marketplace 发布者为 **`ujyong`**。如果安装过旧 ID **`jyongli.codex-quota-vscode`**，请先在本地与对应远程端卸载旧插件，再安装新版；VS Code 将这两个 ID 视为不同扩展，不能原地更新，同时启用会产生重复状态栏。现有 `codexQuota.*` 设置及 Codex CLI 登录继续使用，无须重新登录。
+本版 Marketplace 发布者为 **`ujyong`**，扩展名称为 **`codex-quota-monitor-ujyong`**；原名称 `codex-quota-vscode` 在商店已被占用。如果安装过旧 ID **`jyongli.codex-quota-vscode`** 或 **`ujyong.codex-quota-vscode`**，请先在本地与对应远程端卸载旧插件，再安装新版；VS Code 将不同 ID 视为独立扩展，不能原地更新，同时启用会产生重复状态栏。现有 `codexQuota.*` 设置及 Codex CLI 登录继续使用，无须重新登录。
 
 VS Code 商店的发布配置与操作见 [Marketplace 发布说明](MARKETPLACE.md)。发布流程使用已通过双平台检查的 GitHub Release 安装包。
 
@@ -174,7 +174,7 @@ xvfb-run -a npm run test:vscode
 
 该测试验证激活、额度状态、账号来源、工作区覆盖下的位置切换、API Key 状态、失败诊断，原生语言／位置设置即时生效、简化菜单打开设置，以及单个工作区扩展的实际运行位置和本机路径读取。设置 `CODEX_QUOTA_NATIVE_CLI` 为官方 CLI 入口路径可额外验证真实 VS Code 宿主启动 CLI 并读取临时未登录账号；CI 在 Windows 与 Linux 上均执行此检查。真实远程宿主验证仍需按上面的步骤在实际 SSH / WSL / 容器连接中安装该插件。按 F5 可启动扩展调试宿主。
 
-公开打包结果只有 `artifacts/codex-quota-vscode-<版本>.vsix`，同一个包可安装在本地和远程。安装包只包含运行入口、清单、说明与许可证；没有内置第二扩展或运行时 npm 依赖，不包含测试、开发依赖或凭据。打包命令只生成本地文件，不推送或发布。
+公开打包结果只有 `artifacts/codex-quota-monitor-ujyong-<版本>.vsix`，同一个包可安装在本地和远程。安装包只包含运行入口、清单、说明与许可证；没有内置第二扩展或运行时 npm 依赖，不包含测试、开发依赖或凭据。打包命令只生成本地文件，不推送或发布。
 
 发布到 GitHub 使用 `.github/workflows/release.yml`：仅推送 `v*` 标签或手动运行时执行发布，避免同时推送发布目录和标签产生重复任务。完成 Windows 与 Linux 测试、校验 `releases/<标签>` 中已验证的 VSIX 后，创建附带安装包与 SHA256 的 Release。手动运行根据 `package.json` 版本选择已有标签；已有 Release 不重复创建。该工作流需要仓库启用 GitHub Actions；写权限仅赋予发布任务。
 

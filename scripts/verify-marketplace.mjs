@@ -9,7 +9,7 @@ const [archive, version] = process.argv.slice(2);
 assert.ok(archive && semver.valid(version) && !semver.prerelease(version), 'Specify an archive and stable version');
 const { manifest, xmlManifest } = await readVSIXPackage(archive);
 assert.equal(manifest.publisher, 'ujyong');
-assert.equal(manifest.name, 'codex-quota-vscode');
+assert.equal(manifest.name, 'codex-quota-monitor-ujyong');
 assert.equal(manifest.version, version);
 const identity = xmlManifest.PackageManifest.Metadata[0].Identity[0].$;
 assert.equal(identity.Publisher, manifest.publisher, 'VSIX publisher must match package.json');

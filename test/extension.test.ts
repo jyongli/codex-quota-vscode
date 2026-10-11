@@ -151,7 +151,7 @@ async function harness(scenario: unknown, options: {
       async update(key: string, value: unknown) { if (state.storageError) throw state.storageError; if (value === undefined) delete state.workspacePreferences[key]; else state.workspacePreferences[key] = value; }
     },
     extensionUri: { fsPath: path.resolve(__dirname, '../..') },
-    extension: { id: 'ujyong.codex-quota-vscode', extensionKind: (options.workspaceHost ?? !!options.remoteName) ? 2 : 1 },
+    extension: { id: 'ujyong.codex-quota-monitor-ujyong', extensionKind: (options.workspaceHost ?? !!options.remoteName) ? 2 : 1 },
     globalStorageUri: { fsPath: path.join(home, 'runtime') }, subscriptions
   } as unknown as VSCode.ExtensionContext);
   return { api, home, async dispose() {
@@ -354,7 +354,7 @@ test('原生语言设置立即重译已有额度和菜单，不重查 CLI；工�
       '$(refresh) Refresh quota', '$(account) View account and quota source',
       '$(output) View diagnostic log', '$(settings-gear) Open settings'
     ]);
-    assert.equal(state.openedSettings, '@ext:ujyong.codex-quota-vscode');
+    assert.equal(state.openedSettings, '@ext:ujyong.codex-quota-monitor-ujyong');
     for (const name of ['selectEnvironment', 'togglePosition', 'selectLanguage']) assert.ok(!state.commands.has(`codexQuota.${name}`));
     await mock.commands.executeCommand('codexQuota.showAccount');
     assert.match(state.messages.at(-1)!, /Account source:.*Codex CLI.*VS Code GitHub/);

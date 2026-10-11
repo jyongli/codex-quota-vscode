@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.13
+
+- 将已被占用的扩展名称 `codex-quota-vscode` 更改为 `codex-quota-monitor-ujyong`，发布者继续为 `ujyong`，显示名称保持 Codex Quota。
+- 扩展 ID 为 `ujyong.codex-quota-monitor-ujyong`；同步更新安装文件名、商店地址、身份校验及原生设置定位测试。
+- 打包与 CI 从清单读取包名，发布流程从目标标签读取包名，避免名称变更后仍下载旧文件。
+- 安装新版前卸载旧 `jyongli.codex-quota-vscode` 或 `ujyong.codex-quota-vscode`，避免重复状态栏；现有设置和 Codex CLI 登录继续使用。
+
 ## 0.1.12
 
 - Marketplace 发布者更正为实际账号下的 `ujyong`，修复上传 VSIX 时发布者 ID 不匹配；扩展 ID 为 `ujyong.codex-quota-vscode`。

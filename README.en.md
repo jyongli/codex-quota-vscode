@@ -14,13 +14,13 @@ Codex Quota is a **Visual Studio Code extension** that displays the remaining qu
 
 Use desktop VS Code 1.95+. Existing official Codex CLI installations are reused. If the default `codex` command is missing, the extension automatically installs the official npm package on that host; this requires npm and network access. Codex CLI 0.116.0+ is recommended.
 
-Download version 0.1.12 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
+Download version 0.1.13 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
 
-- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.12/codex-quota-vscode-0.1.12.vsix)
+- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.13/codex-quota-monitor-ujyong-0.1.13.vsix)
 
 Install using **Extensions → … → Install from VSIX**. In a local window install under **Local**. In an SSH / WSL / Dev Container / desktop Codespaces window install the **same extension, same VSIX** on that remote host using the remote Extensions group or **Install from VSIX**. A missing CLI is automatically installed on that machine; sign in there with ChatGPT.
 
-The Marketplace publisher is **`ujyong`**, with extension ID **`ujyong.codex-quota-vscode`**. If you installed the previous **`jyongli.codex-quota-vscode`** ID, uninstall that copy locally and on the relevant remote hosts before installing this version. VS Code treats these IDs as different extensions; keeping both active creates duplicate status items. Existing `codexQuota.*` settings and Codex CLI sign-in are preserved.
+The extension name is **`codex-quota-monitor-ujyong`** because the original `codex-quota-vscode` name is already taken in the Marketplace. The Marketplace publisher is **`ujyong`**, with extension ID **`ujyong.codex-quota-monitor-ujyong`**. If you installed the previous **`jyongli.codex-quota-vscode`** or **`ujyong.codex-quota-vscode`** ID, uninstall that copy locally and on the relevant remote hosts before installing this version. VS Code treats these IDs as different extensions; keeping both active creates duplicate status items. Existing `codexQuota.*` settings and Codex CLI sign-in are preserved.
 
 The extension uses `extensionKind: ["workspace"]`: local windows read the local CLI, account and IP; remote windows read the remote host’s CLI, account and IP. When installed on both sides, VS Code runs one instance in the active workspace host, with one quota status item. A remote window requires a remote installation; a local-only copy does not query locally from that remote window. Failed remote queries never fall back to a local account. The extension does not request window reloads or install companion extensions; VS Code controls whether initial installation / upgrades require activation or an extension reload.
 
