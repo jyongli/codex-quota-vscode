@@ -10,7 +10,7 @@
 
 ## 发布已验证版本
 
-打开 [Publish VS Code Marketplace 工作流](https://github.com/jyongli/codex-quota-vscode/actions/workflows/marketplace.yml)，点击 **Run workflow**，选择 `main`，`release_tag` 填写 **`v0.1.10`**。本版简化菜单，将语言与位置放到原生设置中配置，继续按安装环境查询额度，请使用此版本。
+打开 [Publish VS Code Marketplace 工作流](https://github.com/jyongli/codex-quota-vscode/actions/workflows/marketplace.yml)，点击 **Run workflow**，选择 `main`，`release_tag` 填写 **`v0.1.11`**。本版检测所在机器的 Codex CLI，并在默认命令缺失时自动后台安装；继续按插件安装环境查询额度，请使用此版本。
 
 流程检查该标签提交已通过 Windows／Linux CI，下载已发布到 GitHub 的主 VSIX，与标签中记录的 SHA256 对比，并验证单包、workspace 执行清单与机器级路径设置。随后通过官方 `vsce verify-pat` 检查发布权限，使用 `vsce publish --packagePath` 上传已有包，不重新打包。重复运行会跳过商店中已存在的同版本。
 
