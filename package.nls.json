@@ -6,7 +6,7 @@
   "showAccount": "Codex Quota: View account and quota source",
   "showDiagnostics": "Codex Quota: View diagnostic log",
   "statusBarPosition": "Status bar side. Changes apply immediately.",
-  "cliPath": "Codex executable path (or official npm JS entry) on the machine running this extension. Use local user settings locally and remote user settings remotely; shell commands are not accepted.",
+  "cliPath": "Codex CLI command or absolute path on the extension host. The default codex command is automatically installed if missing; explicit paths are never replaced.",
   "codexHome": "Codex configuration directory on this machine. Leave empty to inherit its CODEX_HOME or ~/.codex. Supports ~/. Credentials are not read by this extension.",
   "remoteCliPath": "Codex CLI path on the remote host. Configure in remote user settings; shell commands are not accepted.",
   "remoteCodexHome": "Codex configuration directory on the remote host. Leave empty to inherit remote CODEX_HOME or ~/.codex. Supports ~/.",
@@ -21,5 +21,6 @@
   "remoteCodexHome.deprecated": "Use codexQuota.codexHome in remote user settings. This legacy value is used only if the new setting is unset.",
   "language.auto.label": "Follow VS Code",
   "position.left": "Left",
-  "position.right": "Right"
+  "position.right": "Right",
+  "autoInstallCli": "Automatically install the official Codex npm package in extension storage on this host when the default codex command is missing. Requires npm and network access; does not change the system PATH."
 }

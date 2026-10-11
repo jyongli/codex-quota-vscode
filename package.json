@@ -2,7 +2,7 @@
   "name": "codex-quota-vscode",
   "displayName": "Codex Quota",
   "description": "%main.description%",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "publisher": "jyongli",
   "license": "MIT",
   "repository": {
@@ -143,6 +143,12 @@
           "default": true,
           "scope": "window",
           "description": "%showPublicIp%"
+        },
+        "codexQuota.autoInstallCli": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "description": "%autoInstallCli%"
         }
       }
     }

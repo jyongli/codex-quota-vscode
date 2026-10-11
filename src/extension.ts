@@ -4,6 +4,7 @@ import { activeTarget, hostIpAddress, ExecutionTarget } from './environment';
 import { accountText, quotaText, QuotaWindow } from './quota';
 import { errorMessage, Language, Message, MessageKey, resolveLanguage, t, text } from './i18n';
 import { getPublicIp } from './publicIp';
+import { ensureCli } from './cliInstall';
 
 export interface ExtensionState {
   text: string;
@@ -47,12 +48,15 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private snapshot?: Snapshot;
   private error?: Message;
   private loading = false;
+  private installing = false;
+  private readonly storagePath: string;
   private readonly target: ExecutionTarget;
   private readonly output: vscode.OutputChannel;
   private notifiedError?: string;
   private notificationCount = 0;
 
   constructor(context: vscode.ExtensionContext) {
+    this.storagePath = context.globalStorageUri.fsPath;
     this.output = vscode.window.createOutputChannel('Codex Quota');
     this.target = activeTarget(context.extension.extensionKind === vscode.ExtensionKind.Workspace, vscode.env.remoteName);
     this.createBar();
@@ -81,7 +85,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
         this.createBar();
         this.render();
       }
-      if (['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'refreshIntervalSeconds', 'requestTimeoutSeconds', 'showPublicIp'].some(key => event.affectsConfiguration(`codexQuota.${key}`))) {
+      if (['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'autoInstallCli', 'refreshIntervalSeconds', 'requestTimeoutSeconds', 'showPublicIp'].some(key => event.affectsConfiguration(`codexQuota.${key}`))) {
         this.invalidate();
         this.startPolling();
       }
@@ -134,6 +138,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     this.abort?.abort();
     this.running = undefined;
     this.loading = false;
+    this.installing = false;
     this.snapshot = undefined;
     this.error = undefined;
   }
@@ -157,8 +162,22 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const includePublicIp = this.config().get('showPublicIp', true);
     const job = (async () => {
       try {
+        const cliPath = await ensureCli({
+          cliPath: this.hostSetting('cliPath', 'codex'), storagePath: this.storagePath,
+          autoInstall: this.config().get('autoInstallCli', true),
+          onInstalling: () => {
+            if (this.disposed || generation !== this.generation) return;
+            this.installing = true;
+            this.output.appendLine(`[${new Date().toISOString()}] ${this.t('installingCli')}`);
+            this.render();
+          }
+        }, abort.signal);
+        if (abort.signal.aborted) return;
+        if (this.installing) this.output.appendLine(`[${new Date().toISOString()}] ${this.t('cliInstalled')}`);
+        this.installing = false;
+        this.render();
         const [quota, publicIp] = await Promise.all([queryCodex({
-          cliPath: this.hostSetting('cliPath', 'codex'),
+          cliPath,
           codexHome: this.hostSetting('codexHome', ''), timeoutMs: timeout * 1000
         }, abort.signal), includePublicIp ? getPublicIp(abort.signal) : Promise.resolve(undefined)]);
         const snapshot = { ...quota, hostIp: hostIpAddress(), publicIp };
@@ -180,6 +199,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
         abort.abort();
         if (!this.disposed && generation === this.generation) {
           this.loading = false;
+          this.installing = false;
           this.running = undefined;
           this.render();
         }
@@ -196,7 +216,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const pending = this.pendingReason();
     let summary = this.t('waiting');
     if (pending) summary = pending;
-    else if (this.loading) summary = `$(sync~spin) ${this.t('querying')}`;
+    else if (this.loading) summary = `$(sync~spin) ${this.t(this.installing ? 'installingCli' : 'querying')}`;
     else if (this.error) summary = `$(warning) ${this.t('failed')}`;
     else if (this.snapshot) {
       summary = this.snapshot.quota ? quotaText(this.snapshot.quota, language)
@@ -221,6 +241,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
         if (snapshot.quota.accountId) lines.push(this.t('accountId', { value: singleLine(snapshot.quota.accountId) }));
       }
       lines.push(this.t('checkedAt', { value: snapshot.checkedAt.toLocaleString(language) }));
+      if (snapshot.account.type === 'signedOut') lines.push(this.t('loginHint'));
     }
     const seconds = this.refreshSeconds();
     lines.push(this.t('refreshInterval', { value: seconds === 60 ? this.t('minute', { seconds }) : seconds % 60 === 0

@@ -15,19 +15,19 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 
 ## 安装与使用
 
-要求桌面 VS Code 1.95+。在要查询的机器安装官方 [Codex CLI](https://github.com/openai/codex)，建议 0.116.0+，并用 ChatGPT 账号执行 `codex login`。
+要求桌面 VS Code 1.95+。插件优先使用所在机器已有的官方 [Codex CLI](https://github.com/openai/codex)（建议 0.116.0+）；默认 `codex` 命令缺失时自动安装。自动安装需要该机器的 npm 和网络。
 
-从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.10**，只需一个安装包：
+从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.11**，只需一个安装包：
 
-- [Codex Quota 安装包 codex-quota-vscode-0.1.10.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.10/codex-quota-vscode-0.1.10.vsix)
-- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.10/codex-quota-vscode-0.1.10.vsix.sha256)
+- [Codex Quota 安装包 codex-quota-vscode-0.1.11.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.11/codex-quota-vscode-0.1.11.vsix)
+- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.11/codex-quota-vscode-0.1.11.vsix.sha256)
 
 本地窗口在“本地”安装；连接 SSH／WSL／容器后，在对应远程分组安装 **同一个 Codex Quota 插件、同一个 VSIX**。两端使用同一扩展 ID `jyongli.codex-quota-vscode`，各自读取所在机器上已登录的 Codex CLI。
 
 从 VS Code 扩展视图的“…”菜单选择 **Install from VSIX / 从 VSIX 安装**。本地安装也可执行：
 
 ```sh
-code --install-extension codex-quota-vscode-0.1.10.vsix
+code --install-extension codex-quota-vscode-0.1.11.vsix
 ```
 
 VS Code 商店的发布配置与操作见 [Marketplace 发布说明](MARKETPLACE.md)。发布流程使用已通过双平台检查的 GitHub Release 安装包。
@@ -42,10 +42,20 @@ VS Code 商店的发布配置与操作见 [Marketplace 发布说明](MARKETPLACE
 | Codex Quota: 查看账号与额度来源 | 查询后展示来源详情 |
 | Codex Quota: 查看诊断日志 | 打开 Codex Quota 输出面板，查看失败阶段、CLI 路径、配置目录与退出码 |
 
+## Codex CLI 自动安装
+
+首次查询先检查当前插件宿主的 CLI 路径与 PATH。已有 CLI 直接复用；默认 `codex` 命令缺失时，先复用本机已自动安装的副本，没有副本才安装官方 `@openai/codex@latest`。本地安装只在本地检测／安装，远程安装只在远程机器检测／安装。自定义命令或绝对路径无效时提供路径错误，不自动替换。
+
+安装使用该机器 PATH 中 npm 的 JavaScript 入口，在后台通过官方 `https://registry.npmjs.org` 下载到 VS Code 的插件全局存储目录。插件不执行 npm.cmd shell 包装、不弹出命令行窗口、不需要管理员权限、不修改系统 PATH，也不覆盖全局 CLI。禁用安装脚本并明确包含官方平台可选依赖；完成后校验包身份、入口与原生程序，再启用。重复刷新／多个窗口共用安装锁；未完成的目录不作为成功安装复用。
+
+状态栏显示“正在安装 Codex CLI”。安装独立超时为 180 秒；失败显示 npm 缺失、网络／代理／证书、权限、残缺平台包等类别，可通过“刷新额度”重试。插件退出或设置改变会取消正在进行的安装。若该机器没有 npm，请安装 Node.js 与 npm，再启动 VS Code；插件不会自动安装 Node.js 或提升权限。设置 `codexQuota.autoInstallCli: false` 可停止自动下载，已安装的副本仍可复用。
+
+安装程序与登录账号是两件事。自动安装沿用同一宿主的 `CODEX_HOME`／`codexQuota.codexHome` 和系统凭据存储，已有登录直接读取；未登录显示“未登录”，请在该机器的终端执行 `npx @openai/codex login`，完成后刷新。自定义配置目录时，请给登录命令设置同一个 `CODEX_HOME`。插件不读取或迁移认证文件、不代为登录；“查看账号与额度来源”显示实际使用的 CLI 和配置目录。
+
 ## 按安装位置查询
 
 1. **本地窗口**：在本地安装 Codex Quota，读取本机的 Codex CLI、登录账号、配置目录和 IP。
-2. **SSH／WSL／Dev Container／桌面 Codespaces 窗口**：在当前远程端安装同一个 Codex Quota，并在那台机器安装、登录 Codex CLI；读取远程机器的账号、额度和 IP。可在扩展视图中点击“安装到 SSH: …／WSL: …／容器”，或在远程窗口使用“从 VSIX 安装”。
+2. **SSH／WSL／Dev Container／桌面 Codespaces 窗口**：在当前远程端安装同一个 Codex Quota，CLI 缺失时在那台机器自动安装，并在该机器登录 ChatGPT；读取远程机器的账号、额度和 IP。可在扩展视图中点击“安装到 SSH: …／WSL: …／容器”，或在远程窗口使用“从 VSIX 安装”。
 3. 两端都安装时，**远程窗口使用远程端，本地窗口使用本地端**。一个窗口只有一个该扩展实例和一条额度状态栏，不同时查询两端。远程查询失败时不会改读本机账号。
 4. 状态栏 `[本地]`／`[远程]` 和悬浮提示的 IP 表示实际查询机器；“查看账号与额度来源”还显示宿主类型、CLI 和配置目录。可通过 **Developer: Show Running Extensions** 核实插件位置。
 
@@ -123,7 +133,8 @@ CLI 用参数数组在后台启动，`shell: false`、`windowsHide: true`，通�
 | `codexQuota.language` | `auto` | `auto` / `zh-CN` / `en`，即时切换显示语言 |
 | `codexQuota.showPublicIp` | `true` | 显示查询宿主的公网出口 IP；关闭后停止请求 |
 | `codexQuota.statusBarPosition` | `right` | `left` / `right`，即时生效 |
-| `codexQuota.cliPath` | `codex` | 当前宿主的 CLI 路径；在该机器的用户设置中配置 |
+| `codexQuota.cliPath` | `codex` | 当前宿主的 CLI 路径；默认命令缺失时自动安装，自定义路径不替换 |
+| `codexQuota.autoInstallCli` | `true` | CLI 缺失时在当前宿主的插件存储中自动安装官方 npm 包 |
 | `codexQuota.codexHome` | 空 | 当前宿主的配置目录；继承该机器的配置，支持绝对路径和 `~/` |
 | `codexQuota.refreshIntervalSeconds` | `300` | 自动刷新间隔，60–3600 秒 |
 | `codexQuota.requestTimeoutSeconds` | `60` | 整个查询的超时，5–120 秒；错误标明失败阶段 |

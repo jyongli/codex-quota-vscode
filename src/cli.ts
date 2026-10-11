@@ -112,11 +112,11 @@ export async function resolveCli(command: string, env: NodeJS.ProcessEnv = proce
     ? [expanded]
     : expanded.includes('/') || expanded.includes('\\')
       ? [] // Relative workspace paths must not execute code from the current project.
-      : (env.PATH ?? env.Path ?? '').split(windows ? ';' : path.delimiter).filter(Boolean)
+      : (env.PATH ?? env.Path ?? '').split(windows ? ';' : path.delimiter).filter(dir => path.isAbsolute(dir))
         .flatMap(dir => windows && !path.extname(expanded)
           ? ['.exe', '.cmd', '.bat'].map(ext => path.join(dir, expanded + ext))
           : [path.join(dir, expanded)]);
-  if (!candidates.length) throw fail('absoluteCli');
+  if (!candidates.length) throw fail(expanded.includes('/') || expanded.includes('\\') ? 'absoluteCli' : 'cliMissing');
   let found: string | undefined;
   for (const candidate of candidates) {
     try {

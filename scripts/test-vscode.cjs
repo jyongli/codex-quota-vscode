@@ -5,9 +5,15 @@ const { runTests } = require('@vscode/test-electron');
 const testWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-quota-host-workspace-'));
 const testProfile = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-quota-host-profile-'));
 const testExtensions = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-quota-host-extensions-'));
+const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-quota-host-login-'));
 fs.mkdirSync(path.join(testProfile, 'User'));
 // Seed the ordinary user setting before startup activation, keeping host tests offline.
-fs.writeFileSync(path.join(testProfile, 'User/settings.json'), JSON.stringify({ 'codexQuota.showPublicIp': false }));
+fs.writeFileSync(path.join(testHome, 'scenario.json'), JSON.stringify({ account: null }));
+fs.writeFileSync(path.join(testProfile, 'User/settings.json'), JSON.stringify({
+  'codexQuota.showPublicIp': false,
+  'codexQuota.cliPath': path.resolve(__dirname, '../test/fixtures/codex.cjs'),
+  'codexQuota.codexHome': testHome
+}));
 runTests({
   version: '1.95.3',
   timeout: 15000,
@@ -23,4 +29,5 @@ runTests({
     fs.rmSync(testWorkspace, { recursive: true, force: true });
     fs.rmSync(testProfile, { recursive: true, force: true });
     fs.rmSync(testExtensions, { recursive: true, force: true });
+    fs.rmSync(testHome, { recursive: true, force: true });
   });

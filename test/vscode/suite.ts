@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { QuotaApi } from '../../src/extension';
 import { ReadableStream } from 'node:stream/web';
+import { npmFixture } from '../install-helpers';
 
 async function openSettingsFromMenu(): Promise<void> {
   const command = vscode.commands.executeCommand('codexQuota.menu');
@@ -20,7 +21,7 @@ async function openSettingsFromMenu(): Promise<void> {
 export async function run(): Promise<void> {
   const home = await mkdtemp(path.join(tmpdir(), 'codex-quota-vscode-'));
   const config = vscode.workspace.getConfiguration('codexQuota');
-  const previous = Object.fromEntries(['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'statusBarPosition', 'language', 'showPublicIp'].map(key => [key, config.inspect(key)?.globalValue]));
+  const previous = Object.fromEntries(['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'autoInstallCli', 'statusBarPosition', 'language', 'showPublicIp'].map(key => [key, config.inspect(key)?.globalValue]));
   try {
     await config.update('language', 'zh-CN', vscode.ConfigurationTarget.Global);
     await config.update('showPublicIp', false, vscode.ConfigurationTarget.Global);
@@ -142,6 +143,32 @@ export async function run(): Promise<void> {
       await api.refresh();
       assert.match(api.getState().text, /未登录/);
       console.log('PASS: real VS Code extension host launches the official npm Codex CLI and reads an isolated unsigned-in account');
+    }
+    const previousPath = process.env.PATH;
+    const previousFixture = process.env.CODEX_QUOTA_NPM_FIXTURE;
+    try {
+      const installEnv = await npmFixture(home, { delay: 300 });
+      process.env.PATH = installEnv.PATH;
+      process.env.CODEX_QUOTA_NPM_FIXTURE = installEnv.CODEX_QUOTA_NPM_FIXTURE;
+      await writeFile(path.join(home, 'scenario.json'), JSON.stringify({ account: null }));
+      await config.update('codexHome', home, vscode.ConfigurationTarget.Global);
+      await config.update('autoInstallCli', true, vscode.ConfigurationTarget.Global);
+      await config.update('cliPath', 'codex', vscode.ConfigurationTarget.Global);
+      await api.refresh();
+      assert.match(api.getState().text, /未登录/);
+      assert.match(api.getState().tooltip, /npx @openai\/codex login/);
+      const entry = api.getState().snapshot?.cliPath;
+      assert.ok(entry?.includes('codex-cli'));
+      assert.equal(api.getState().snapshot?.codexHome, home);
+      await api.refresh();
+      assert.equal(api.getState().snapshot?.cliPath, entry);
+      assert.equal((await readFile(path.join(home, 'npm-trace.jsonl'), 'utf8')).trim().split('\n').length, 1);
+      console.log('PASS: actual VS Code host automatically installs a missing CLI in background and reuses it, preserving account home');
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH; else process.env.PATH = previousPath;
+      if (previousFixture === undefined) delete process.env.CODEX_QUOTA_NPM_FIXTURE; else process.env.CODEX_QUOTA_NPM_FIXTURE = previousFixture;
+      await config.update('cliPath', path.resolve(__dirname, '../../../test/fixtures/codex.cjs'), vscode.ConfigurationTarget.Global);
+      await api.refresh();
     }
   } finally {
     await config.update('language', undefined, vscode.ConfigurationTarget.Workspace);

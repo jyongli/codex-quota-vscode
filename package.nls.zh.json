@@ -6,7 +6,7 @@
   "showAccount": "Codex Quota: 查看账号与额度来源",
   "showDiagnostics": "Codex Quota: 查看诊断日志",
   "statusBarPosition": "状态栏位置；更改后立即生效。",
-  "cliPath": "当前安装环境的 Codex 可执行文件路径（或官方 npm CLI 的 .js 入口）；本地在用户设置、远程在远程用户设置中配置，不接受 shell 命令。",
+  "cliPath": "插件所在机器的 Codex CLI 命令或绝对路径。默认 codex 命令缺失时自动安装；不替换自定义路径。",
   "codexHome": "当前安装环境的 Codex 配置目录，留空继承该机器的 CODEX_HOME 或 ~/.codex。支持 ~/。插件不读取凭据文件。",
   "remoteCliPath": "远程宿主的 Codex CLI 路径；在远程用户设置配置，不接受 shell 命令。",
   "remoteCodexHome": "远程宿主的 Codex 配置目录，留空继承远程 CODEX_HOME，否则使用远程 ~/.codex。支持 ~/。",
@@ -21,5 +21,6 @@
   "remoteCodexHome.deprecated": "请改用远程用户设置中的 codexQuota.codexHome；尚未配置新键时仍兼容此旧设置。",
   "language.auto.label": "跟随 VS Code",
   "position.left": "左侧",
-  "position.right": "右侧"
+  "position.right": "右侧",
+  "autoInstallCli": "默认 codex 命令缺失时，在插件所在机器的专用存储中自动安装官方 Codex npm 包。需要 npm 和网络，不修改系统 PATH。"
 }

@@ -23,6 +23,6 @@ test('英文额度与账号保留原始百分比和账号数据，不伪造未�
   assert.equal(quotaText(quota, 'en'), '5h 75% · Week —');
   assert.equal(quotaText(parseQuota({ rateLimits: { secondary: { usedPercent: 12.5, windowDurationMins: 10080 } } }), 'en'), 'Week 87.5%');
   assert.equal(accountText(parseAccount({ account: { type: 'chatgpt', email: '中文@example.test', planType: 'pro' } }), 'en'), '中文@example.test (ChatGPT / pro)');
-  assert.match(accountText(parseAccount({ account: null }), 'en'), /Not signed in.*codex login/);
+  assert.equal(accountText(parseAccount({ account: null }), 'en'), 'Not signed in to ChatGPT');
   assert.match(accountText(parseAccount({ account: { type: 'apiKey' } }), 'en'), /no ChatGPT subscription/);
 });

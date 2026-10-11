@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile, readdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import cli from '../out/src/cli.js';
+import installer from '../out/src/cliInstall.js';
 const testHome = await mkdtemp(path.join(tmpdir(), 'codex-quota-native-'));
 try {
   const home = path.join(testHome, 'Codex home 中文 with spaces');
@@ -12,6 +13,19 @@ try {
   await mkdir(database);
   await mkdir(logs);
   await writeFile(path.join(home, 'config.toml'), `sqlite_home = ${JSON.stringify(database)}\nlog_dir = ${JSON.stringify(logs)}\n`);
+  const npm = await installer.resolveNpm();
+  const npmDirectory = path.join(testHome, 'npm only with spaces');
+  const npmBin = path.join(npmDirectory, 'node_modules', 'npm', 'bin');
+  await mkdir(npmBin, { recursive: true });
+  await writeFile(path.join(npmDirectory, process.platform === 'win32' ? 'npm.cmd' : 'npm'), 'shell wrappers must not run');
+  await writeFile(path.join(npmBin, 'npm-cli.js'), `require(${JSON.stringify(npm)});\n`);
+  const options = { cliPath: 'codex', storagePath: path.join(testHome, 'managed CLI'), autoInstall: true,
+    env: { ...process.env, PATH: npmDirectory } };
+  const managed = await installer.ensureCli(options, new AbortController().signal);
+  assert.equal(await installer.ensureCli(options, new AbortController().signal), managed);
+  assert.equal((await cli.queryCodex({ cliPath: managed, codexHome: home, timeoutMs: 20_000 })).account.type, 'signedOut');
+  const installedVersion = JSON.parse(await readFile(path.join(path.dirname(managed), '..', 'package.json'), 'utf8')).version;
+  console.log(`PASS: missing CLI automatically installs official @openai/codex@${installedVersion} from the registry, reuses storage, and reads an isolated account`);
   const snapshot = await cli.queryCodex({
     cliPath: process.argv[2] ?? 'codex', codexHome: home,
     timeoutMs: 20_000

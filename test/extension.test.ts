@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Module from 'node:module';
-import { writeFile } from 'node:fs/promises';
+import { readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { QuotaApi } from '../src/extension';
 import type * as VSCode from 'vscode';
 import { cleanup, fixtureCli, readTrace, scenarioHome } from './helpers';
 import { hostIpAddress } from '../src/environment';
 import type { LanguageSetting } from '../src/i18n';
+import { npmFixture } from './install-helpers';
 
 type Listener = (event: { affectsConfiguration(key: string): boolean }) => void;
 interface Bar {
@@ -117,10 +118,18 @@ function fire(changed: string): void {
 async function harness(scenario: unknown, options: {
   remoteName?: string; workspaceHost?: boolean; trusted?: boolean; legacyRemote?: boolean; workspacePosition?: string; legacyKinds?: boolean; language?: LanguageSetting; vscodeLanguage?: string; workspaceLanguage?: LanguageSetting; publicIp?: boolean;
   globalPreferences?: Record<string, unknown>; workspacePreferences?: Record<string, unknown>;
+  missingCli?: boolean; npmScenario?: unknown;
 } = {}): Promise<{ api: QuotaApi; home: string; dispose(): Promise<void> }> {
   const home = await scenarioHome(scenario);
+  const previousPath = process.env.PATH;
+  const previousNpmFixture = process.env.CODEX_QUOTA_NPM_FIXTURE;
+  if (options.missingCli) {
+    const installEnv = await npmFixture(home, options.npmScenario);
+    process.env.PATH = installEnv.PATH;
+    process.env.CODEX_QUOTA_NPM_FIXTURE = installEnv.CODEX_QUOTA_NPM_FIXTURE;
+  }
   state = {
-    settings: { language: options.language ?? 'auto', showPublicIp: options.publicIp ?? false, cliPath: fixtureCli, codexHome: home, statusBarPosition: 'right', requestTimeoutSeconds: 5,
+    settings: { language: options.language ?? 'auto', showPublicIp: options.publicIp ?? false, cliPath: options.missingCli ? 'codex' : fixtureCli, codexHome: home, statusBarPosition: 'right', requestTimeoutSeconds: 5,
       ...(options.legacyRemote ? { cliPath: undefined, codexHome: undefined, remoteCliPath: fixtureCli, remoteCodexHome: home } : {}) },
     workspaceValues: { ...(options.workspacePosition ? { statusBarPosition: options.workspacePosition } : {}), ...(options.workspaceLanguage ? { language: options.workspaceLanguage } : {}) }, updates: [],
     kinds: options.legacyKinds ? { 'other.extension': ['ui'], 'jyongli.codex-quota-vscode': ['workspace'] } : {},
@@ -147,9 +156,50 @@ async function harness(scenario: unknown, options: {
   } as unknown as VSCode.ExtensionContext);
   return { api, home, async dispose() {
     for (const subscription of subscriptions) subscription.dispose();
+    if (previousPath === undefined) delete process.env.PATH; else process.env.PATH = previousPath;
+    if (previousNpmFixture === undefined) delete process.env.CODEX_QUOTA_NPM_FIXTURE; else process.env.CODEX_QUOTA_NPM_FIXTURE = previousNpmFixture;
     await cleanup(home);
   } };
 }
+
+test('CLI 缺失时仅在插件安装宿主后台安装，随后复用；安装不要求重载或写入设置', async () => {
+  for (const remoteName of [undefined, 'ssh-remote']) {
+    const h = await harness({ account: null }, { missingCli: true, remoteName, npmScenario: { delay: 300 } });
+    try {
+      const pending = h.api.refresh();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      assert.match(h.api.getState().text, /正在安装 Codex CLI/);
+      state.settings.language = 'en'; fire('codexQuota.language');
+      assert.match(h.api.getState().text, /Installing Codex CLI/);
+      await Promise.all([pending, h.api.refresh()]);
+      assert.equal(h.api.getState().target, remoteName ? 'remote' : 'local');
+      assert.match(h.api.getState().text, /Signed out/);
+      assert.match(h.api.getState().tooltip, /npx @openai\/codex login/);
+      assert.ok(h.api.getState().snapshot?.cliPath.startsWith(await realpath(path.join(h.home, 'runtime'))));
+      assert.equal(h.api.getState().snapshot?.codexHome, h.home);
+      await h.api.refresh();
+      assert.equal((await readFile(path.join(h.home, 'npm-trace.jsonl'), 'utf8')).trim().split('\n').length, 1);
+      assert.equal(state.updates.length, 0);
+      assert.equal(state.reloads, 0);
+      assert.equal(state.installs.length, 0);
+    } finally { await h.dispose(); }
+  }
+});
+
+test('自动安装失败显示具体类别和双语提示，手动刷新可恢复，未登录不当作失败', async () => {
+  const h = await harness({ account: null }, { missingCli: true, npmScenario: { fail: 1, stderr: 'ECONNRESET SENSITIVE_NPM_TOKEN' } });
+  try {
+    await h.api.refresh();
+    assert.match(h.api.getState().tooltip, /自动安装失败.*网络/);
+    assert.doesNotMatch(state.output.lines.join('\n') + state.errors.join('\n'), /SENSITIVE_NPM_TOKEN/);
+    state.settings.language = 'en'; fire('codexQuota.language');
+    assert.match(h.api.getState().tooltip, /installation failed.*network/);
+    await writeFile(path.join(h.home, 'npm-scenario.json'), '{}');
+    await mock.commands.executeCommand('codexQuota.refresh');
+    assert.match(h.api.getState().text, /Signed out/);
+    assert.ok(h.api.getState().snapshot);
+  } finally { await h.dispose(); }
+});
 
 test('扩展激活、命令注册、状态栏、账号来源与即时左右切换', async () => {
   const h = await harness({});

@@ -12,19 +12,29 @@ Codex Quota is a **Visual Studio Code extension** that displays the remaining qu
 
 ## Installation
 
-Use desktop VS Code 1.95+ and the [official Codex CLI](https://github.com/openai/codex) on each machine you want to query. Sign in with `codex login` using ChatGPT. Codex CLI 0.116.0+ is recommended; Windows and Linux tests also use 0.162.1.
+Use desktop VS Code 1.95+. Existing official Codex CLI installations are reused. If the default `codex` command is missing, the extension automatically installs the official npm package on that host; this requires npm and network access. Codex CLI 0.116.0+ is recommended.
 
-Download version 0.1.10 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
+Download version 0.1.11 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
 
-- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.10/codex-quota-vscode-0.1.10.vsix)
+- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.11/codex-quota-vscode-0.1.11.vsix)
 
-Install using **Extensions → … → Install from VSIX**. In a local window install under **Local**. In an SSH / WSL / Dev Container / desktop Codespaces window install the **same extension, same VSIX** on that remote host using the remote Extensions group or **Install from VSIX**. Install and sign in to Codex CLI on that machine too.
+Install using **Extensions → … → Install from VSIX**. In a local window install under **Local**. In an SSH / WSL / Dev Container / desktop Codespaces window install the **same extension, same VSIX** on that remote host using the remote Extensions group or **Install from VSIX**. A missing CLI is automatically installed on that machine; sign in there with ChatGPT.
 
 The extension uses `extensionKind: ["workspace"]`: local windows read the local CLI, account and IP; remote windows read the remote host’s CLI, account and IP. When installed on both sides, VS Code runs one instance in the active workspace host, with one quota status item. A remote window requires a remote installation; a local-only copy does not query locally from that remote window. Failed remote queries never fall back to a local account. The extension does not request window reloads or install companion extensions; VS Code controls whether initial installation / upgrades require activation or an extension reload.
 
 The status bar shows `[Local]` / `[Remote]`, the tooltip shows the machine’s IP, and **View account and quota source** includes the actual host type and paths. **Developer: Show Running Extensions** can verify its location.
 
 Upgrading: the manual environment selector and `codexQuota.executionEnvironment` are removed. The old **Codex Quota Remote** companion can be uninstalled. Remove any custom `remote.extensionKind` override for this extension to apply the new workspace-host model; the extension does not rewrite host overrides. Legacy remote path settings remain a fallback until the new unified settings are configured.
+
+## Automatic CLI installation
+
+The extension checks the CLI setting and PATH in its actual host. Existing CLI installations take priority, followed by a cached managed installation. If the default `codex` command is missing, it installs `@openai/codex@latest` from `https://registry.npmjs.org` into VS Code’s extension global storage on that machine. Invalid custom commands or paths keep their errors and are never replaced.
+
+The npm JavaScript entry runs in the background with hidden Windows processes, without executing npm.cmd through a shell. Installation does not require administrator access or change PATH or a global CLI. Scripts are disabled and official optional platform packages are included; package identity, entry and native binary are checked before use. Concurrent refreshes and windows share an installation lock; partial installations are cleaned up. There is no window reload.
+
+The status bar shows **Installing Codex CLI**. Installation has a separate 180-second timeout and reports missing npm, network/proxy/certificate failures, permissions and incomplete packages. Refresh to retry. Disposal or relevant setting changes cancel installation. If npm is absent, install Node.js and npm on that host and restart VS Code. `codexQuota.autoInstallCli: false` disables downloads while allowing an existing managed installation to be reused.
+
+Installation preserves that host’s `CODEX_HOME` / `codexQuota.codexHome` and credential store. Existing sign-in is reused; a signed-out account stays **Signed out**. Run `npx @openai/codex login` in that host’s terminal and refresh; set the same `CODEX_HOME` when using a custom directory. The extension does not log in, read or migrate credentials. **View account and quota source** shows the actual CLI and configuration paths.
 
 ## Language and status bar settings
 
@@ -62,7 +72,8 @@ API Key, Bedrock and signed-out states are identified explicitly. Remaining perc
 | `codexQuota.language` | `auto` | `auto`, `zh-CN` or `en`; applies immediately |
 | `codexQuota.showPublicIp` | `true` | Retrieve and display the extension host’s public IP |
 | `codexQuota.statusBarPosition` | `right` | `left` or `right`; applies immediately |
-| `codexQuota.cliPath` | `codex` | Executable or official npm JS entry on the current host |
+| `codexQuota.cliPath` | `codex` | CLI on this host; missing default command is installed automatically; explicit paths are preserved |
+| `codexQuota.autoInstallCli` | `true` | Automatically download the official CLI into this host’s extension storage when missing |
 | `codexQuota.codexHome` | empty | Directory on the current host; inherits its `CODEX_HOME` or `~/.codex` |
 | `codexQuota.refreshIntervalSeconds` | `300` | Automatic refresh interval, 60–3600 seconds |
 | `codexQuota.requestTimeoutSeconds` | `60` | Quota query timeout, 5–120 seconds |
