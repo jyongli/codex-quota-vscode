@@ -20,18 +20,21 @@ jobs:
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          gh run view 38105599367 --log-failed > "$RUNNER_TEMP/codex-quota-release-failure.log"
+          gh run view 38105599367 --attempt 1 --log-failed > "$RUNNER_TEMP/codex-quota-release-failure.log"
           python - <<'PY'
           import os, re
           from pathlib import Path
           data = Path(os.environ['RUNNER_TEMP'], 'codex-quota-release-failure.log').read_text()
+          print('::notice title=Release diagnostic::Original failed log length: ' + str(len(data)))
           for line in data.splitlines():
-              if 'npm error' not in line.lower():
+              if not re.search(r'error|failed|fatal|exception|ERR!', line, re.I):
                   continue
               line = re.sub(r'https?://[^\s]+', '[registry URL]', line)
               line = re.sub(r'(?i)(token|password|secret|authorization)\s*[:=]\s*[^\s]+', r'\1=[redacted]', line)
               line = re.sub(r'(?<![\w/])(?:[A-Za-z0-9_=-]{32,})(?![\w/])', '[redacted]', line)
               safe = line[-500:].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-              print('::notice title=Release npm diagnostic::' + safe)
+              print('::notice title=Release failure diagnostic::' + safe)
           PY
-          gh run rerun 38105599367 --failed
+          if [ "$(gh run view 38105599367 --json conclusion --jq '.conclusion')" = failure ]; then
+            gh run rerun 38105599367 --failed
+          fi
