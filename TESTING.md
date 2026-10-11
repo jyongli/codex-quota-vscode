@@ -10,6 +10,7 @@
 - 真实 Linux VS Code `1.95.3`：14 组断言通过，新增相同配置目录与账号自动合并，以及无需执行选择命令的自动 Quick Pick。选中第二个账号后读取其独立额度，清除额外来源恢复单一账号。安装最终 VSIX 后，同样的 14 组断言再次通过；安装后入口、图标和翻译字节与测试包一致。
 - 最终 VSIX：12 个文件，1,160,434 字节；商店图标／简介／JSON 与 XML 包身份校验通过。SHA256：`3c612ff05acf024f153bf1b2dd4b706e5293b60daa8d5d2c6b04ed6614d35c98`。
 - [Windows／Linux CI 第 52 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38131389142)：通过（1 分 52 秒）。两端均通过单元、实际打包入口、官方 npm CLI、真实 VS Code 自动选择／合并和 VSIX 校验。
+- [发布标签提交 CI 第 53 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38131562247)与 [GitHub Release 第 27 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38131562079)：通过。公开下载的 VSIX／SHA256 与冻结测试包完全一致，包身份及图标再次校验通过。
 
 账号检测使用官方 `initialize`／`account/read`，不读取 `auth.json`。ChatGPT 身份比较依据接口返回的邮箱与计划；无邮箱、API Key、Bedrock 或探测失败不能确认身份，不进行合并。共享目录通过不同 CLI 返回不同账号的情形用隔离协议测试程序验证。官方 IDE 内存登录状态、插件内部其他 SSH 连接与不同宿主仍不在自动检测范围，真实登录与远程实机验收限制沿用前版。
 

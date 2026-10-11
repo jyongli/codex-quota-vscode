@@ -5,12 +5,12 @@
 ## 网页上传
 
 1. 使用 Microsoft 账号打开 [Marketplace 发布者管理](https://marketplace.visualstudio.com/manage)，选择已有发布者 **`ujyong`**。
-2. 从 [GitHub Release v0.1.13](https://github.com/jyongli/codex-quota-vscode/releases/tag/v0.1.13) 下载 **`codex-quota-monitor-ujyong-0.1.13.vsix`**。
+2. 从 [GitHub Release v0.1.15](https://github.com/jyongli/codex-quota-vscode/releases/tag/v0.1.15) 下载 **`codex-quota-monitor-ujyong-0.1.15.vsix`**。
 3. 首次发布时点击 **New extension → Visual Studio Code**，上传该 VSIX；如果 `ujyong.codex-quota-monitor-ujyong` 已存在，则在该扩展的菜单选择更新并上传新版。
 
 网页上传使用当前 Microsoft 账号的发布者权限，无须配置 GitHub 的 `VSCE_PAT`。VSIX 中 `package.json` 和 `extension.vsixmanifest` 的发布者都必须是 `ujyong`，否则会出现 Publisher ID 不匹配错误；本版打包校验同时检查这两处。
 
-本版包名为 **`codex-quota-monitor-ujyong`**。原 `codex-quota-vscode` 名称已被占用，上传 `0.1.12` 会出现 “The extension already exists” 错误；这不能只靠修改发布者解决，必须同时更改 `package.json` 的 `name` 和 VSIX 身份。`0.1.11` 及更早的包还使用旧发布者 `jyongli`。请使用 `0.1.13` 的新包。
+本版包名为 **`codex-quota-monitor-ujyong`**。原 `codex-quota-vscode` 名称已被占用，上传 `0.1.12` 会出现 “The extension already exists” 错误；这不能只靠修改发布者解决，必须同时更改 `package.json` 的 `name` 和 VSIX 身份。`0.1.11` 及更早的包还使用旧发布者 `jyongli`。从 `0.1.13` 起使用新扩展 ID，请使用 `0.1.15` 的最新安装包。
 
 已安装旧 `jyongli.codex-quota-vscode` 或 `ujyong.codex-quota-vscode` 的用户需要先在本地／远程端卸载旧插件，再安装新版；这些扩展 ID 是独立的。现有 `codexQuota.*` 设置和 Codex CLI 登录仍可使用。
 
@@ -24,7 +24,7 @@ Linux CI 会通过官方 `vsce search` 检查公开商店是否已有其他发�
 
 ## 自动发布已验证版本
 
-打开 [Publish VS Code Marketplace 工作流](https://github.com/jyongli/codex-quota-vscode/actions/workflows/marketplace.yml)，点击 **Run workflow**，选择 `main`，`release_tag` 填写 **`v0.1.13`**。
+打开 [Publish VS Code Marketplace 工作流](https://github.com/jyongli/codex-quota-vscode/actions/workflows/marketplace.yml)，点击 **Run workflow**，选择 `main`，`release_tag` 填写 **`v0.1.15`**。
 
 流程检查该标签提交已通过 Windows／Linux CI，下载已发布到 GitHub 的主 VSIX，与标签中记录的 SHA256 对比，并验证发布者、版本、单包、workspace 执行清单与机器级路径设置。随后通过官方 `vsce verify-pat ujyong` 检查发布权限，使用 `vsce publish --packagePath` 上传已有包，不重新打包。重复运行会跳过商店中已存在的同版本。
 
