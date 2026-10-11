@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Existing tested GitHub release tag, for example v0.1.11'
+        description: 'Existing tested GitHub release tag, for example v0.1.12'
         required: true
-        default: v0.1.11
+        default: v0.1.12
         type: string
   push:
     branches: [main]
@@ -40,7 +40,9 @@ jobs:
             cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
           Marketplace publication has not run: repository secret `VSCE_PAT` is missing.
 
-          Create or confirm Marketplace publisher `jyongli`, add an Azure DevOps PAT with **Marketplace: Manage** permissions as repository secret `VSCE_PAT`, then run this workflow manually with tag `v0.1.11`.
+          Create or confirm Marketplace publisher `ujyong`, add an Azure DevOps PAT with **Marketplace: Manage** permissions as repository secret `VSCE_PAT`, then run this workflow manually with tag `v0.1.12`.
+
+          Alternatively, upload the release VSIX directly in Marketplace publisher `ujyong` using your Microsoft account; browser upload does not require this GitHub secret.
 
           No credentials should be added to source files or pasted into chat.
           SUMMARY
@@ -89,7 +91,7 @@ jobs:
         if: steps.credential.outputs.ready == 'true'
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx --no-install vsce verify-pat jyongli
+        run: npx --no-install vsce verify-pat ujyong
       - name: Publish the tested VSIX
         if: steps.credential.outputs.ready == 'true'
         env:
@@ -102,7 +104,7 @@ jobs:
           cat >> "$GITHUB_STEP_SUMMARY" <<SUMMARY
           Submitted **Codex Quota $RELEASE_VERSION** to the VS Code Marketplace using the existing verified GitHub release VSIX.
 
-          Extension: https://marketplace.visualstudio.com/items?itemName=jyongli.codex-quota-vscode
+          Extension: https://marketplace.visualstudio.com/items?itemName=ujyong.codex-quota-vscode
 
           Marketplace validation and indexing can take several minutes. One VSIX and one extension ID are published; the same extension runs on its installation host locally or remotely.
           SUMMARY
@@ -111,19 +113,19 @@ jobs:
         shell: bash
         run: |
           for attempt in 1 2 3 4 5 6; do
-            if timeout 20s npx --no-install vsce show jyongli.codex-quota-vscode --json \
+            if timeout 20s npx --no-install vsce show ujyong.codex-quota-vscode --json \
                 > "$RUNNER_TEMP/codex-quota-marketplace-item.json" 2>/dev/null && \
               node - "$RUNNER_TEMP/codex-quota-marketplace-item.json" "$RELEASE_VERSION" <<'JS'
           const fs = require('node:fs');
           try {
             const item = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-            const visible = item?.publisher?.publisherName === 'jyongli' && item.extensionName === 'codex-quota-vscode'
+            const visible = item?.publisher?.publisherName === 'ujyong' && item.extensionName === 'codex-quota-vscode'
               && item.versions?.some(version => version.version === process.argv[3]);
             process.exit(visible ? 0 : 1);
           } catch { process.exit(1); }
           JS
             then
-              echo "::notice title=Marketplace version verified::jyongli.codex-quota-vscode $RELEASE_VERSION is visible in the public gallery."
+              echo "::notice title=Marketplace version verified::ujyong.codex-quota-vscode $RELEASE_VERSION is visible in the public gallery."
               echo "Public Marketplace version verified: $RELEASE_VERSION" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
