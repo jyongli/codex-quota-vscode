@@ -110,8 +110,6 @@ CLI paths and configuration directories have machine scope and are excluded from
 
 ## Development
 
-For VS Code Marketplace credentials and submission, see [the publishing guide](MARKETPLACE.md). The workflow uploads an existing GitHub release VSIX after verifying its checksum and successful Windows / Linux checks.
-
 Use Node.js 20+:
 
 ```sh

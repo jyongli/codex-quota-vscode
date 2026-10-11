@@ -7,3 +7,4 @@ bundled/
 *.vsix
 !releases/*/codex-quota-*.vsix
 *.log
+/MARKETPLACE.md

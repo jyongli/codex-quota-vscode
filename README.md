@@ -32,8 +32,6 @@ code --install-extension codex-quota-monitor-ujyong-0.1.15.vsix
 
 本版 Marketplace 发布者为 **`ujyong`**，扩展名称为 **`codex-quota-monitor-ujyong`**；原名称 `codex-quota-vscode` 在商店已被占用。如果安装过旧 ID **`jyongli.codex-quota-vscode`** 或 **`ujyong.codex-quota-vscode`**，请先在本地与对应远程端卸载旧插件，再安装新版；VS Code 将不同 ID 视为独立扩展，不能原地更新，同时启用会产生重复状态栏。现有 `codexQuota.*` 设置及 Codex CLI 登录继续使用，无须重新登录。
 
-VS Code 商店的发布配置与操作见 [Marketplace 发布说明](MARKETPLACE.md)。发布流程使用已通过双平台检查的 GitHub Release 安装包。
-
 插件在 VS Code 选定的工作区宿主执行。CLI 不在该宿主的 PATH 中时，在本地用户设置或远程用户设置中指定 `codexQuota.cliPath` 的绝对路径；图形界面启动的 VS Code 不一定继承终端的 PATH。
 
 点击状态栏打开菜单，或使用命令面板中的以下命令：
