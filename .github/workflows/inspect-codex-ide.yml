@@ -1,0 +1,63 @@
+name: Inspect official Codex IDE integration
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-codex-ide.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Inspect public documentation and extension package
+        shell: bash
+        run: |
+          python - <<'PY'
+          import urllib.request, zipfile, io, json, re
+          def notice(title, value):
+              text = str(value).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::notice title=' + title + '::' + text)
+          for slug in ['auth', 'ide/settings', 'pricing']:
+              try:
+                  url = 'https://developers.openai.com/codex/' + slug
+                  req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                  body = urllib.request.urlopen(req, timeout=20).read().decode()
+                  body = re.sub(r'<(script|style)\b.*?</\1>', '', body, flags=re.S)
+                  plain = re.sub(r'\s+', ' ', re.sub('<[^>]+>', ' ', body))
+                  samples = []
+                  for match in re.finditer(r'CODEX_HOME|shared|share authentication|credential|cliExecutable|runCodexInWindows|sign.in|SSH|remote|limit|5.hour', plain, re.I):
+                      sample = plain[max(0, match.start()-140):match.start()+300]
+                      if sample not in samples:
+                          samples.append(sample)
+                  notice('Official docs ' + slug, '\n'.join(samples[-18:]))
+              except Exception as error:
+                  notice('Official docs unavailable', slug + ': ' + type(error).__name__)
+          url = 'https://marketplace.visualstudio.com/_apis/public/gallery/publishers/openai/vsextensions/chatgpt/latest/vspackage?targetPlatform=linux-x64'
+          req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+          archive = zipfile.ZipFile(io.BytesIO(urllib.request.urlopen(req, timeout=45).read()))
+          manifest = json.loads(archive.read('extension/package.json'))
+          props = manifest.get('contributes', {}).get('configuration', {})
+          props = props if isinstance(props, list) else [props]
+          settings = {key: value for group in props for key, value in group.get('properties', {}).items()}
+          notice('Official IDE manifest', json.dumps({key: manifest.get(key) for key in ['name','publisher','version','main','extensionKind','extensionDependencies','activationEvents']}, ensure_ascii=False))
+          notice('Official IDE settings', json.dumps(settings, ensure_ascii=False))
+          notice('Official IDE commands', json.dumps(manifest.get('contributes', {}).get('commands', []), ensure_ascii=False))
+          main = manifest.get('main', '').removeprefix('./')
+          source = archive.read('extension/' + main).decode()
+          patterns = [r'CODEX_HOME', r'cliExecutable', r'runCodexInWindowsSubsystemForLinux', r'account/rateLimits/read', r'account/read', r'chatgptAuthTokens', r'exports=', r'exports\.', r'getCodexHome', r'auth\.json', r'globalStorage', r'secrets\.', r'codexHome', r'--listen', r'app-server']
+          for index, pattern in enumerate(patterns):
+              samples = []
+              for match in re.finditer(pattern, source):
+                  snippet = source[max(0,match.start()-220):match.start()+420]
+                  if snippet not in samples:
+                      samples.append(snippet)
+                  if len(samples) == 5:
+                      break
+              notice('IDE source ' + str(index), pattern + ':\n' + '\n'.join(samples))
+          notice('IDE bundle tail', source[-7000:])
+          PY
