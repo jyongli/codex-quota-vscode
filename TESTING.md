@@ -8,7 +8,7 @@
 - `npm run test:bundle`：18 项通过，加载实际打包入口。
 - 真实 Linux VS Code `1.95.3`：12 组断言通过，按 `ujyong.codex-quota-vscode` 发现扩展，确认发布者为 `ujyong`；包括实际菜单打开设置、双语／位置即时更新、CLI 查询和后台自动安装。
 - 最终 VSIX：11 个文件、39,508 字节；`package.json` 与 `extension.vsixmanifest` 中的发布者均为 `ujyong`，版本均为 `0.1.12`。ZIP 和已安装入口字节一致性检查通过。独立安装最终 VSIX 后，真实 VS Code 宿主的 12 组断言再次通过。
-- Windows／Linux CI 新增实际 VSIX 发布者与清单身份校验，防止上传时再次出现发布者不匹配。
+- [Windows／Linux CI 第 38 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38109090060)：通过。两端均通过单元测试、打包入口、官方 CLI 和实际 VS Code 宿主检查，以及新增的 VSIX 发布者与两份清单身份校验。
 
 本版更正 Marketplace 发布者，不改变 CLI 查询协议和按安装位置运行的规则。旧 `jyongli.codex-quota-vscode` 是不同扩展 ID，升级时需卸载旧插件；账号凭据无需迁移。商店网页上传尚需实际账号提交，打包验证不能代替 Marketplace 上架确认。真实 SSH／WSL／容器、macOS／ARM64、真实订阅账号和公网 IP 联网验证范围沿用之前记录。
 
