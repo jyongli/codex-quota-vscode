@@ -14,4 +14,6 @@ export async function readTrace(home: string): Promise<Record<string, unknown>[]
   return (await readFile(path.join(home, 'trace.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
 }
 
-export async function cleanup(home: string): Promise<void> { await rm(home, { recursive: true, force: true }); }
+export async function cleanup(home: string): Promise<void> {
+  await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}

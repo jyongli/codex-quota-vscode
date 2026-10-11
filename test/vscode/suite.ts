@@ -174,6 +174,6 @@ export async function run(): Promise<void> {
     await config.update('language', undefined, vscode.ConfigurationTarget.Workspace);
     await config.update('statusBarPosition', undefined, vscode.ConfigurationTarget.Workspace);
     for (const [key, value] of Object.entries(previous)) await config.update(key, value, vscode.ConfigurationTarget.Global);
-    await rm(home, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }

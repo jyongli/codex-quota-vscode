@@ -26,8 +26,9 @@ runTests({
   extensionTestsEnv: { ELECTRON_RUN_AS_NODE: undefined }
 }).catch(error => { console.error(error.message); process.exitCode = 1; })
   .finally(() => {
-    fs.rmSync(testWorkspace, { recursive: true, force: true });
-    fs.rmSync(testProfile, { recursive: true, force: true });
-    fs.rmSync(testExtensions, { recursive: true, force: true });
-    fs.rmSync(testHome, { recursive: true, force: true });
+    const cleanup = { recursive: true, force: true, maxRetries: 10, retryDelay: 100 };
+    fs.rmSync(testWorkspace, cleanup);
+    fs.rmSync(testProfile, cleanup);
+    fs.rmSync(testExtensions, cleanup);
+    fs.rmSync(testHome, cleanup);
   });

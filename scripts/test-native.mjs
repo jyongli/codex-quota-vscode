@@ -52,5 +52,7 @@ try {
   }
   throw error;
 } finally {
-  await rm(testHome, { recursive: true, force: true });
+  // Windows can briefly retain SQLite file handles after the CLI has exited.
+  // Retry cleanup errors; functional assertions above still fail immediately.
+  await rm(testHome, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
