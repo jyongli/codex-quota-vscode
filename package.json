@@ -2,7 +2,8 @@
   "name": "codex-quota-monitor-ujyong",
   "displayName": "Codex Quota",
   "description": "%main.description%",
-  "version": "0.1.13",
+  "icon": "resources/icon.png",
+  "version": "0.1.14",
   "publisher": "ujyong",
   "license": "MIT",
   "repository": {
@@ -54,6 +55,10 @@
       {
         "command": "codexQuota.showDiagnostics",
         "title": "%showDiagnostics%"
+      },
+      {
+        "command": "codexQuota.selectSource",
+        "title": "%selectSource%"
       }
     ],
     "configuration": {
@@ -149,6 +154,38 @@
           "default": true,
           "scope": "machine",
           "description": "%autoInstallCli%"
+        },
+        "codexQuota.environments": {
+          "type": "array",
+          "default": [],
+          "scope": "machine",
+          "description": "%environments%",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "codexHome"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "description": "%environment.name%"
+              },
+              "codexHome": {
+                "type": "string",
+                "minLength": 1,
+                "description": "%environment.home%"
+              },
+              "cliPath": {
+                "type": "string",
+                "description": "%environment.cli%"
+              }
+            }
+          }
         }
       }
     }

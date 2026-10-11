@@ -5,6 +5,7 @@ import { accountText, quotaText, QuotaWindow } from './quota';
 import { errorMessage, Language, Message, MessageKey, resolveLanguage, t, text } from './i18n';
 import { getPublicIp } from './publicIp';
 import { ensureCli } from './cliInstall';
+import { discoverSources, QuerySource, selectedSource } from './sources';
 
 export interface ExtensionState {
   text: string;
@@ -12,6 +13,8 @@ export interface ExtensionState {
   alignment: 'left' | 'right';
   target: ExecutionTarget;
   snapshot?: Snapshot;
+  sources: { id: string; kind: 'cli' | 'ide'; name?: string }[];
+  selectedSource?: string;
 }
 
 export interface QuotaApi {
@@ -55,8 +58,13 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private readonly output: vscode.OutputChannel;
   private notifiedError?: string;
   private notificationCount = 0;
+  private sources: QuerySource[] = [];
+  private selection?: string;
+  private readonly context: vscode.ExtensionContext;
 
   constructor(context: vscode.ExtensionContext) {
+    this.context = context;
+    this.selection = context.workspaceState.get<string>('selectedSource');
     this.storagePath = context.globalStorageUri.fsPath;
     this.extensionId = context.extension.id;
     this.output = vscode.window.createOutputChannel('Codex Quota');
@@ -66,7 +74,8 @@ class QuotaController implements vscode.Disposable, QuotaApi {
       'codexQuota.menu': () => this.menu(),
       'codexQuota.refresh': () => this.manualRefresh(),
       'codexQuota.showAccount': () => this.showAccount(),
-      'codexQuota.showDiagnostics': () => this.output.show(true)
+      'codexQuota.showDiagnostics': () => this.output.show(true),
+      'codexQuota.selectSource': () => this.selectSource()
     };
     for (const [name, action] of Object.entries(commands)) {
       this.subscriptions.push(vscode.commands.registerCommand(name, async () => {
@@ -87,10 +96,15 @@ class QuotaController implements vscode.Disposable, QuotaApi {
         this.createBar();
         this.render();
       }
-      if (['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'autoInstallCli', 'refreshIntervalSeconds', 'requestTimeoutSeconds', 'showPublicIp'].some(key => event.affectsConfiguration(`codexQuota.${key}`))) {
+      if (['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'environments', 'autoInstallCli', 'refreshIntervalSeconds', 'requestTimeoutSeconds', 'showPublicIp'].some(key => event.affectsConfiguration(`codexQuota.${key}`))
+        || event.affectsConfiguration('chatgpt.cliExecutable') || event.affectsConfiguration('chatgpt.runCodexInWindowsSubsystemForLinux')) {
         this.invalidate();
         this.startPolling();
       }
+    }));
+    this.subscriptions.push(vscode.extensions.onDidChange(() => {
+      this.invalidate();
+      void this.refresh();
     }));
     this.startPolling();
   }
@@ -135,6 +149,23 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     return undefined;
   }
 
+  private currentSource(): QuerySource | undefined { return selectedSource(this.sources, this.selection); }
+
+  private sourceLabel(source: QuerySource): string {
+    return source.kind === 'ide' ? this.t('ideLabel') : source.name ? `CLI / ${singleLine(source.name)}` : 'CLI';
+  }
+
+  private async findSources(): Promise<QuerySource[]> {
+    const ide = vscode.extensions.getExtension('openai.chatgpt');
+    const config = vscode.workspace.getConfiguration('chatgpt');
+    return discoverSources(this.hostSetting('cliPath', 'codex'), this.hostSetting('codexHome', ''), this.config().get('environments', []), ide ? {
+      path: ide.extensionUri.fsPath,
+      sameHost: ide.extensionKind === this.context.extension.extensionKind,
+      cliPath: config.get<string | null>('cliExecutable') ?? undefined,
+      usesWsl: config.get('runCodexInWindowsSubsystemForLinux', false)
+    } : undefined);
+  }
+
   private invalidate(): void {
     this.generation++;
     this.abort?.abort();
@@ -164,9 +195,16 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const includePublicIp = this.config().get('showPublicIp', true);
     const job = (async () => {
       try {
+        const sources = await this.findSources();
+        if (this.disposed || generation !== this.generation) return;
+        const previousSource = this.currentSource()?.id;
+        this.sources = sources;
+        const source = this.currentSource();
+        if (previousSource !== source?.id) { this.snapshot = undefined; this.error = undefined; this.render(); }
+        if (!source) { this.snapshot = undefined; this.error = undefined; return; }
         const cliPath = await ensureCli({
-          cliPath: this.hostSetting('cliPath', 'codex'), storagePath: this.storagePath,
-          autoInstall: this.config().get('autoInstallCli', true),
+          cliPath: source.cliPath, storagePath: this.storagePath,
+          autoInstall: source.kind === 'cli' && this.config().get('autoInstallCli', true),
           onInstalling: () => {
             if (this.disposed || generation !== this.generation) return;
             this.installing = true;
@@ -180,7 +218,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
         this.render();
         const [quota, publicIp] = await Promise.all([queryCodex({
           cliPath,
-          codexHome: this.hostSetting('codexHome', ''), timeoutMs: timeout * 1000
+          codexHome: source.codexHome, timeoutMs: timeout * 1000
         }, abort.signal), includePublicIp ? getPublicIp(abort.signal) : Promise.resolve(undefined)]);
         const snapshot = { ...quota, hostIp: hostIpAddress(), publicIp };
         if (this.disposed || generation !== this.generation) return;
@@ -214,11 +252,13 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private render(): void {
     if (this.disposed) return;
     const language = this.language();
-    const prefix = `Codex [${this.t(this.target)}]`;
+    const source = this.currentSource();
+    const prefix = `Codex [${this.sources.length > 1 && source ? this.sourceLabel(source) + ' · ' : ''}${this.t(this.target)}]`;
     const pending = this.pendingReason();
     let summary = this.t('waiting');
     if (pending) summary = pending;
     else if (this.loading) summary = `$(sync~spin) ${this.t(this.installing ? 'installingCli' : 'querying')}`;
+    else if (this.sources.length > 1 && !source) summary = this.t('chooseSource');
     else if (this.error) summary = `$(warning) ${this.t('failed')}`;
     else if (this.snapshot) {
       summary = this.snapshot.quota ? quotaText(this.snapshot.quota, language)
@@ -229,6 +269,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const rawIp = this.snapshot?.hostIp ?? hostIpAddress();
     const ip = !rawIp || rawIp === '未获取到' ? this.t('notAvailable') : language === 'en' ? rawIp.replace(/、/g, ', ') : rawIp;
     const lines = [this.t('title'), this.t('ip', { value: singleLine(ip) })];
+    if (this.sources.length > 1) lines.push(this.t('activeSource', { value: source ? this.sourceLabel(source) : this.t('chooseSource') }));
     if (this.config().get('showPublicIp', true)) lines.push(this.t('publicIp', { value: this.snapshot?.publicIp ?? this.t('notAvailable') }));
     if (pending) lines.push(pending, this.t('trustToQuery'));
     else if (this.error) lines.push(text(language, this.error), this.t('cleared'));
@@ -253,7 +294,8 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   }
 
   getState(): ExtensionState {
-    return { text: this.bar.text, tooltip: String(this.bar.tooltip ?? ''), alignment: this.position(), target: this.target, snapshot: this.snapshot };
+    return { text: this.bar.text, tooltip: String(this.bar.tooltip ?? ''), alignment: this.position(), target: this.target, snapshot: this.snapshot,
+      sources: this.sources.map(({ id, kind, name }) => ({ id, kind, name })), selectedSource: this.currentSource()?.id };
   }
 
   private async notifyFailure(message: Message): Promise<void> {
@@ -275,15 +317,18 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const lines = [String(this.bar.tooltip ?? '')];
     if (this.snapshot) {
       const host = this.t(this.target) + (this.target === 'remote' ? ` / ${singleLine(vscode.env.remoteName ?? '')}` : '');
-      lines.push(this.t('queryHost', { value: host }), this.t('source'), this.t('cli', { value: singleLine(this.snapshot.cliPath) }),
+      lines.push(this.t('queryHost', { value: host }), this.t(this.currentSource()?.kind === 'ide' ? 'ideSource' : 'source'), this.t('cli', { value: singleLine(this.snapshot.cliPath) }),
         this.t('home', { value: singleLine(this.snapshot.codexHome) }), this.t('credentials'));
     }
+    lines.push(this.t('sharedQuota'), this.t('sourceLimits'));
     await vscode.window.showInformationMessage(lines.join('\n'), { modal: true });
   }
 
   private async menu(): Promise<void> {
+    if (this.sources.length > 1 && !this.currentSource()) { await this.selectSource(); return; }
     const choice = await vscode.window.showQuickPick([
       { label: `$(refresh) ${this.t('menuRefresh')}`, command: 'codexQuota.refresh' },
+      ...(this.sources.length > 1 ? [{ label: `$(server-environment) ${this.t('chooseSource')}`, command: 'codexQuota.selectSource' }] : []),
       { label: `$(account) ${this.t('menuAccount')}`, command: 'codexQuota.showAccount' },
       { label: `$(output) ${this.t('menuDiagnostics')}`, command: 'codexQuota.showDiagnostics' },
       { label: `$(settings-gear) ${this.t('menuSettings')}`, command: 'settings' }
@@ -291,6 +336,24 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     if (!choice) return;
     if (choice.command === 'settings') await vscode.commands.executeCommand('workbench.action.openSettings', `@ext:${this.extensionId}`);
     else await vscode.commands.executeCommand(choice.command);
+  }
+
+  private async selectSource(): Promise<void> {
+    if (!this.sources.length) await this.refresh();
+    if (this.sources.length <= 1) return;
+    const choice = await vscode.window.showQuickPick(this.sources.map(source => ({
+      label: `${this.sourceLabel(source)} [${this.t(this.target)}]`,
+      description: source.id === this.currentSource()?.id ? this.t('currentSource') : undefined,
+      detail: this.t('home', { value: singleLine(source.codexHome || this.t('inheritedHome')) }), id: source.id
+    })), { title: this.t('chooseSource'), placeHolder: this.t('sourceChoiceHint') });
+    if (!choice || choice.id === this.currentSource()?.id || !this.sources.some(source => source.id === choice.id)) return;
+    this.invalidate();
+    this.selection = choice.id;
+    // A read-only settings file does not block selection. Persist only the
+    // source ID, never account details, quota or credentials.
+    try { await this.context.workspaceState.update('selectedSource', choice.id); }
+    catch { this.output.appendLine(this.t('selectionNotSaved')); }
+    await this.refresh();
   }
 
   dispose(): void {

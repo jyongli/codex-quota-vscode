@@ -21,7 +21,7 @@ async function openSettingsFromMenu(): Promise<void> {
 export async function run(): Promise<void> {
   const home = await mkdtemp(path.join(tmpdir(), 'codex-quota-vscode-'));
   const config = vscode.workspace.getConfiguration('codexQuota');
-  const previous = Object.fromEntries(['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'autoInstallCli', 'statusBarPosition', 'language', 'showPublicIp'].map(key => [key, config.inspect(key)?.globalValue]));
+  const previous = Object.fromEntries(['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'environments', 'autoInstallCli', 'statusBarPosition', 'language', 'showPublicIp'].map(key => [key, config.inspect(key)?.globalValue]));
   try {
     await config.update('language', 'zh-CN', vscode.ConfigurationTarget.Global);
     await config.update('showPublicIp', false, vscode.ConfigurationTarget.Global);
@@ -44,7 +44,7 @@ export async function run(): Promise<void> {
     const commands = await vscode.commands.getCommands(true);
     for (const name of ['selectEnvironment', 'togglePosition', 'selectLanguage']) assert.ok(!commands.includes(`codexQuota.${name}`));
     assert.equal(vscode.extensions.getExtension('jyongli.codex-quota-remote'), undefined);
-    console.log('PASS: one workspace extension uses its installed host; no environment selector or companion');
+    console.log('PASS: one workspace extension uses its installed host; no host override or companion');
     await api.refresh();
     assert.equal(api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
     assert.match(api.getState().tooltip, /fixture@example.test/);
@@ -108,6 +108,30 @@ export async function run(): Promise<void> {
     assert.equal(api.getState().alignment, 'right');
     assert.equal(api.getState().snapshot, positionSnapshot);
     console.log('PASS: native status bar position settings apply immediately and preserve quota');
+    const secondHome = path.join(home, 'second-account');
+    await mkdir(secondHome);
+    await writeFile(path.join(secondHome, 'scenario.json'), JSON.stringify({ account: { type: 'chatgpt', email: 'second-account@example.test', planType: 'pro' } }));
+    await config.update('environments', [{ name: 'Second account', codexHome: secondHome }], vscode.ConfigurationTarget.Global);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await api.refresh();
+    assert.equal(api.getState().sources.length, 2);
+    assert.equal(api.getState().snapshot, undefined);
+    assert.match(api.getState().text, /选择查询来源/);
+    const sourceCommand = vscode.commands.executeCommand('codexQuota.selectSource');
+    await new Promise(resolve => setTimeout(resolve, 250));
+    await vscode.commands.executeCommand('workbench.action.quickOpenSelectNext');
+    await vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem');
+    await sourceCommand;
+    assert.equal(api.getState().selectedSource, 'environment:Second account');
+    assert.equal(api.getState().snapshot?.codexHome, secondHome);
+    assert.match(api.getState().tooltip, /second-account@example.test/);
+    await config.update('environments', [], vscode.ConfigurationTarget.Global);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await api.refresh();
+    assert.equal(api.getState().sources.length, 1);
+    assert.equal(api.getState().selectedSource, 'cli');
+    assert.equal(api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
+    console.log('PASS: multiple sources require an actual picker choice; singleton restores its account without reloading');
     await writeFile(path.join(home, 'scenario.json'), JSON.stringify({ quota: { rateLimits: { secondary: { usedPercent: 10, windowDurationMins: 10080 } } } }));
     await vscode.commands.executeCommand('codexQuota.refresh');
     assert.equal(api.getState().text, 'Codex [本地] 周 90%');

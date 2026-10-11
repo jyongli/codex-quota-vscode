@@ -27,7 +27,7 @@ interface MockState {
   errors: string[];
   output: { lines: string[]; shown: number; disposed: boolean };
   errorAction?: string;
-  choice?: { command?: string; label: string };
+  choice?: { command?: string; label: string; id?: string };
   picks: { label: string }[][];
   reloads: number;
   installs: unknown[];
@@ -61,7 +61,9 @@ const workspace = {
     return { dispose() { state.listeners.delete(listener); } };
   }
 };
+let ide: { extensionKind: number; extensionUri: { fsPath: string } } | undefined;
 const mock = {
+  extensions: { getExtension() { return ide; }, onDidChange() { return { dispose() {} }; } },
   Uri: { joinPath(base: { fsPath: string }, ...parts: string[]) { return { fsPath: path.join(base.fsPath, ...parts) }; } },
   env, workspace, ExtensionKind: { UI: 1, Workspace: 2 }, StatusBarAlignment: { Left: 1, Right: 2 }, ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
   window: {
@@ -118,9 +120,10 @@ function fire(changed: string): void {
 async function harness(scenario: unknown, options: {
   remoteName?: string; workspaceHost?: boolean; trusted?: boolean; legacyRemote?: boolean; workspacePosition?: string; legacyKinds?: boolean; language?: LanguageSetting; vscodeLanguage?: string; workspaceLanguage?: LanguageSetting; publicIp?: boolean;
   globalPreferences?: Record<string, unknown>; workspacePreferences?: Record<string, unknown>;
-  missingCli?: boolean; npmScenario?: unknown;
+  missingCli?: boolean; npmScenario?: unknown; environments?: unknown; ide?: { extensionKind: number; extensionUri: { fsPath: string } }; ideCli?: string;
 } = {}): Promise<{ api: QuotaApi; home: string; dispose(): Promise<void> }> {
   const home = await scenarioHome(scenario);
+  ide = options.ide;
   const previousPath = process.env.PATH;
   const previousNpmFixture = process.env.CODEX_QUOTA_NPM_FIXTURE;
   if (options.missingCli) {
@@ -129,7 +132,7 @@ async function harness(scenario: unknown, options: {
     process.env.CODEX_QUOTA_NPM_FIXTURE = installEnv.CODEX_QUOTA_NPM_FIXTURE;
   }
   state = {
-    settings: { language: options.language ?? 'auto', showPublicIp: options.publicIp ?? false, cliPath: options.missingCli ? 'codex' : fixtureCli, codexHome: home, statusBarPosition: 'right', requestTimeoutSeconds: 5,
+    settings: { environments: options.environments ?? [], cliExecutable: options.ideCli, language: options.language ?? 'auto', showPublicIp: options.publicIp ?? false, cliPath: options.missingCli ? 'codex' : fixtureCli, codexHome: home, statusBarPosition: 'right', requestTimeoutSeconds: 5,
       ...(options.legacyRemote ? { cliPath: undefined, codexHome: undefined, remoteCliPath: fixtureCli, remoteCodexHome: home } : {}) },
     workspaceValues: { ...(options.workspacePosition ? { statusBarPosition: options.workspacePosition } : {}), ...(options.workspaceLanguage ? { language: options.workspaceLanguage } : {}) }, updates: [],
     kinds: options.legacyKinds ? { 'other.extension': ['ui'], 'jyongli.codex-quota-vscode': ['workspace'] } : {},
@@ -205,7 +208,7 @@ test('扩展激活、命令注册、状态栏、账号来源与即时左右切�
   const h = await harness({});
   try {
     await h.api.refresh();
-    assert.equal(state.commands.size, 4);
+    assert.equal(state.commands.size, 5);
     assert.equal(h.api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
     assert.match(h.api.getState().tooltip, /fixture@example.test/);
     assert.ok(h.api.getState().tooltip.includes(`IP 地址：${hostIpAddress()}`));
@@ -230,6 +233,87 @@ test('扩展激活、命令注册、状态栏、账号来源与即时左右切�
   assert.equal(state.commands.size, 0);
   assert.ok(state.bars.every(bar => bar.disposed));
   assert.ok(state.output.disposed);
+});
+
+test('一个来源直接显示；多个来源先选择，取消不查询，切换保留各自账号且无需重载', async () => {
+  const other = await scenarioHome({ account: { type: 'chatgpt', email: 'other-host-profile@example.test', planType: 'pro' },
+    quota: { rateLimits: { secondary: { usedPercent: 12, windowDurationMins: 10080 } } } });
+  const h = await harness({}, { environments: [{ name: 'Other account', codexHome: other }] });
+  try {
+    await h.api.refresh();
+    assert.equal(h.api.getState().sources.length, 2);
+    assert.match(h.api.getState().text, /选择查询来源/);
+    assert.equal(h.api.getState().snapshot, undefined);
+    await assert.rejects(readTrace(h.home), { code: 'ENOENT' });
+    await mock.commands.executeCommand('codexQuota.menu');
+    assert.equal(state.picks.at(-1)?.length, 2);
+    assert.equal(h.api.getState().snapshot, undefined);
+    state.choice = { id: 'environment:Other account', label: 'Other account' };
+    await mock.commands.executeCommand('codexQuota.selectSource');
+    assert.match(h.api.getState().text, /CLI \/ Other account.*周 88%/);
+    assert.match(h.api.getState().tooltip, /other-host-profile@example.test/);
+    assert.equal(h.api.getState().snapshot?.codexHome, other);
+    assert.equal(state.workspacePreferences.selectedSource, 'environment:Other account');
+    assert.equal(state.updates.length, 0);
+    state.choice = { id: 'cli', label: 'CLI' };
+    await mock.commands.executeCommand('codexQuota.selectSource');
+    assert.match(h.api.getState().tooltip, /fixture@example.test/);
+    assert.doesNotMatch(h.api.getState().tooltip, /other-host-profile/);
+    assert.equal(state.reloads, 0);
+    assert.equal(state.installs.length, 0);
+    state.settings.environments = [];
+    fire('codexQuota.environments');
+    await h.api.refresh();
+    assert.equal(h.api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
+    const picks = state.picks.length;
+    await mock.commands.executeCommand('codexQuota.selectSource');
+    assert.equal(state.picks.length, picks);
+  } finally { await h.dispose(); await cleanup(other); }
+});
+
+test('来源选择恢复、只读偏好不阻止切换，取消旧查询后晚到响应不覆盖新账号', async () => {
+  const other = await scenarioHome({ account: { type: 'chatgpt', email: 'selected@example.test', planType: 'pro' } });
+  const h = await harness({ delay: 800 }, { environments: [{ name: 'New', codexHome: other }], workspacePreferences: { selectedSource: 'cli' } });
+  try {
+    const old = h.api.refresh();
+    await new Promise(resolve => setTimeout(resolve, 100));
+    state.storageError = new Error('EACCES SENSITIVE_MOCK_TOKEN');
+    state.choice = { id: 'environment:New', label: 'New' };
+    await mock.commands.executeCommand('codexQuota.selectSource');
+    await old;
+    assert.match(h.api.getState().tooltip, /selected@example.test/);
+    assert.doesNotMatch(h.api.getState().tooltip, /fixture@example.test/);
+    assert.match(state.output.lines.join('\n'), /偏好无法保存/);
+    assert.doesNotMatch(state.output.lines.join('\n'), /SENSITIVE_MOCK_TOKEN/);
+    assert.equal(state.reloads, 0);
+  } finally { await h.dispose(); await cleanup(other); }
+});
+
+test('IDE 来源使用官方插件同宿主的共享目录，不继承自定义 CLI 账号；其他宿主不冒充可用来源', async () => {
+  const other = await scenarioHome({ account: { type: 'chatgpt', email: 'ide-config@example.test', planType: 'pro' } });
+  const previousHome = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = other;
+  const h = await harness({}, { ide: { extensionKind: 1, extensionUri: { fsPath: path.dirname(fixtureCli) } }, ideCli: fixtureCli });
+  try {
+    await h.api.refresh();
+    assert.deepEqual(h.api.getState().sources.map(source => source.id), ['cli', 'ide']);
+    state.choice = { id: 'ide', label: 'IDE' };
+    await mock.commands.executeCommand('codexQuota.selectSource');
+    assert.equal(h.api.getState().snapshot?.codexHome, other);
+    assert.match(h.api.getState().tooltip, /ide-config@example.test/);
+    await mock.commands.executeCommand('codexQuota.showAccount');
+    assert.match(state.messages.at(-1)!, /共享的 Codex 配置目录/);
+    assert.match(state.messages.at(-1)!, /不读取插件内存/);
+    assert.match(state.messages.at(-1)!, /额度共享/);
+    ide!.extensionKind = 2;
+    await h.api.refresh();
+    assert.equal(h.api.getState().sources.length, 1);
+    assert.equal(h.api.getState().selectedSource, 'cli');
+    assert.match(h.api.getState().tooltip, /fixture@example.test/);
+  } finally {
+    await h.dispose(); await cleanup(other);
+    if (previousHome === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = previousHome;
+  }
 });
 
 test('周额度、未登录和 API Key 状态在扩展中正确呈现', async () => {

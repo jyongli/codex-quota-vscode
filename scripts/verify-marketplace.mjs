@@ -22,6 +22,13 @@ for (const name of ['extension/readme.md', 'extension/license.txt', 'extension/d
   'extension/package.nls.json', 'extension/package.nls.zh-cn.json']) {
   assert.ok(files.get(name)?.length, `Missing ${name}`);
 }
+assert.equal(manifest.icon, 'resources/icon.png');
+const icon = files.get(`extension/${manifest.icon}`);
+assert.ok(icon?.length && icon.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])), 'The Marketplace icon must be a PNG');
+assert.ok(icon.readUInt32BE(16) >= 128 && icon.readUInt32BE(20) >= 128, 'The icon must be at least 128×128');
+assert.equal(icon.readUInt32BE(16), icon.readUInt32BE(20), 'Use a square Marketplace icon');
+const descriptions = JSON.parse(files.get('extension/package.nls.json').toString());
+assert.equal(descriptions['main.description'], 'Show Codex 5-hour and weekly quota usage in the VS Code status bar.');
 assert.ok([...files.keys()].every(name => !/(^|\/)(node_modules|test|auth\.json)(\/|$)/.test(name)));
 assert.ok(![...files.keys()].some(name => name.includes('/bundled/') || name.includes('/remote-provider/')), 'The same extension must run on each installed host without a companion');
 for (const key of ['cliPath', 'codexHome']) {

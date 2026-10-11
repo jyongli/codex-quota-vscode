@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.14
+
+- 新增 Codex Quota 图标；商店简介改为以 Codex 开头的简短中英文描述。
+- 单一来源自动显示，多个来源由用户选择；来源选择保存 ID，无需重载或写入设置，切换取消旧查询并清除旧数字。
+- 支持当前宿主的其他 CLI 配置账号；自动发现同宿主官方 Codex 插件可访问的共享配置账号，明确与独立内存登录／其他 SSH 连接的区别。
+- 同一账号的 CLI／IDE 共享额度，不将来源分开解释为两个额度池；其他宿主或 Windows 内 WSL 来源不冒用本机账号。
+
 ## 0.1.13
 
 - 将已被占用的扩展名称 `codex-quota-vscode` 更改为 `codex-quota-monitor-ujyong`，发布者继续为 `ujyong`，显示名称保持 Codex Quota。

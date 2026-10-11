@@ -1,5 +1,5 @@
 {
-  "main.description": "A Visual Studio Code extension showing remaining 5-hour and weekly quota for the Codex CLI account on the machine where it is installed.",
+  "main.description": "Show Codex 5-hour and weekly quota usage in the VS Code status bar.",
   "main.trust": "Quota queries execute Codex CLI on the machine running this extension.",
   "menu": "Codex Quota: Open menu",
   "refresh": "Codex Quota: Refresh quota",
@@ -22,5 +22,10 @@
   "language.auto.label": "Follow VS Code",
   "position.left": "Left",
   "position.right": "Right",
-  "autoInstallCli": "Automatically install the official Codex npm package in extension storage on this host when the default codex command is missing. Requires npm and network access; does not change the system PATH."
+  "autoInstallCli": "Automatically install the official Codex npm package in extension storage on this host when the default codex command is missing. Requires npm and network access; does not change the system PATH.",
+  "selectSource": "Codex Quota: Choose quota source / environment",
+  "environments": "Additional Codex CLI configuration accounts on this extension host. One source is displayed automatically; multiple sources require a choice without reloading. Paths must belong to this host.",
+  "environment.name": "Unique name for this quota source.",
+  "environment.home": "Codex configuration directory on this host; an absolute path or ~/. No credentials.",
+  "environment.cli": "Optional CLI path; leave empty to use codexQuota.cliPath."
 }

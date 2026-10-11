@@ -7,16 +7,16 @@ Codex Quota is a **Visual Studio Code extension** that displays the remaining qu
 - Both quota windows available: `Codex [Local] 5h 75% · Week 60%`.
 - Weekly window only: `Codex [Local] Week 60%`.
 - Install the same VSIX locally or remotely; query that machine’s CLI and signed-in account.
-- Configure status bar side and display language in VS Code Settings; changes apply immediately.
+- One source is shown automatically; choose between multiple sources. Configure status bar side and language in VS Code Settings.
 - The tooltip shows the extension host’s network interface IP, public outbound IP, account, quota resets, last check and refresh interval.
 
 ## Installation
 
 Use desktop VS Code 1.95+. Existing official Codex CLI installations are reused. If the default `codex` command is missing, the extension automatically installs the official npm package on that host; this requires npm and network access. Codex CLI 0.116.0+ is recommended.
 
-Download version 0.1.13 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
+Download version 0.1.14 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
 
-- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.13/codex-quota-monitor-ujyong-0.1.13.vsix)
+- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.14/codex-quota-monitor-ujyong-0.1.14.vsix)
 
 Install using **Extensions → … → Install from VSIX**. In a local window install under **Local**. In an SSH / WSL / Dev Container / desktop Codespaces window install the **same extension, same VSIX** on that remote host using the remote Extensions group or **Install from VSIX**. A missing CLI is automatically installed on that machine; sign in there with ChatGPT.
 
@@ -27,6 +27,29 @@ The extension uses `extensionKind: ["workspace"]`: local windows read the local 
 The status bar shows `[Local]` / `[Remote]`, the tooltip shows the machine’s IP, and **View account and quota source** includes the actual host type and paths. **Developer: Show Running Extensions** can verify its location.
 
 Upgrading: the manual environment selector and `codexQuota.executionEnvironment` are removed. The old **Codex Quota Remote** companion can be uninstalled. Remove any custom `remote.extensionKind` override for this extension to apply the new workspace-host model; the extension does not rewrite host overrides. Legacy remote path settings remain a fallback until the new unified settings are configured.
+
+## Sources and multiple environments
+
+One available source is displayed automatically. With multiple sources and no saved choice, the status bar asks you to choose; it does not query an arbitrary account. Click it to select, then switch through its menu. Cancelling preserves the current selection. Switching cancels the previous query and clears its numbers without reloading or editing settings. Only the source ID is stored; read-only preferences do not prevent the current switch.
+
+The default source is this host's **CLI**. When the official `openai.chatgpt` extension is installed in the same host and its native/custom CLI is accessible, **VS Code Codex (configuration account)** is also available. It queries the official extension's CLI against this host's `CODEX_HOME` or `~/.codex`, without borrowing a CLI-specific `codexQuota.codexHome`. The signed-in account and remaining quota are read through the official protocol after selection; **View account and quota source** identifies the actual paths.
+
+**CLI and IDE share quota for the same account.** Separate sources are not independent quota pools. The IDE source represents the account in the shared configuration directory; it cannot guarantee the account of an in-memory IDE session or another internal SSH connection. No independently callable account/quota API for other extensions has been confirmed in the official extension.
+
+For multiple Codex configuration accounts on this host, configure local/remote user settings:
+
+```json
+{
+  "codexQuota.environments": [
+    { "name": "Work", "codexHome": "~/codex-work" },
+    { "name": "Personal", "codexHome": "~/codex-personal", "cliPath": "/absolute/path/to/codex" }
+  ]
+}
+```
+
+Use unique names and absolute or `~/` directories on **this extension's host**. The optional CLI path inherits this host's CLI setting when omitted. Codex manages sign-in; do not put credentials in these settings.
+
+Discovery covers accessible sources on the current host. It does not scan other machines or read their credential files. An IDE in a different host, WSL launched from Windows, or another SSH connection inside the IDE is not labelled with this host's CLI account. Install this extension in the relevant host to query there. Source selection does not make one extension instance run simultaneously in local and remote hosts.
 
 ## Automatic CLI installation
 
@@ -40,7 +63,7 @@ Installation preserves that host’s `CODEX_HOME` / `codexQuota.codexHome` and c
 
 ## Language and status bar settings
 
-Click the status bar → **Open settings** to open Codex Quota’s settings. The menu contains only **Refresh quota**, **View account and quota source**, **View diagnostic log**, and **Open settings**.
+Click the status bar → **Open settings** to open Codex Quota’s settings. For one source, the menu contains **Refresh quota**, **View account and quota source**, **View diagnostic log**, and **Open settings**. Multiple sources add **Choose quota source / environment**.
 
 Choose **Language**: **Follow VS Code** (`auto`), **中文** (`zh-CN`), or **English** (`en`). Choose **Status Bar Position**: **Left** (`left`) or **Right** (`right`). You can also edit user / workspace settings:
 
@@ -71,6 +94,7 @@ API Key, Bedrock and signed-out states are identified explicitly. Remaining perc
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
+| `codexQuota.environments` | `[]` | Additional CLI configuration accounts on this host; multiple sources require selection |
 | `codexQuota.language` | `auto` | `auto`, `zh-CN` or `en`; applies immediately |
 | `codexQuota.showPublicIp` | `true` | Retrieve and display the extension host’s public IP |
 | `codexQuota.statusBarPosition` | `right` | `left` or `right`; applies immediately |

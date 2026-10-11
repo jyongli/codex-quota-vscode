@@ -1,5 +1,5 @@
 {
-  "main.description": "显示插件安装环境中 Codex CLI 账号的 5 小时与周剩余额度的 VS Code 插件。",
+  "main.description": "Codex 5 小时与周剩余额度，直接显示在 VS Code 状态栏。",
   "main.trust": "额度查询需要执行插件实际运行机器上的 Codex CLI。",
   "menu": "Codex Quota: 打开菜单",
   "refresh": "Codex Quota: 刷新额度",
@@ -22,5 +22,10 @@
   "language.auto.label": "跟随 VS Code",
   "position.left": "左侧",
   "position.right": "右侧",
-  "autoInstallCli": "默认 codex 命令缺失时，在插件所在机器的专用存储中自动安装官方 Codex npm 包。需要 npm 和网络，不修改系统 PATH。"
+  "autoInstallCli": "默认 codex 命令缺失时，在插件所在机器的专用存储中自动安装官方 Codex npm 包。需要 npm 和网络，不修改系统 PATH。",
+  "selectSource": "Codex Quota: 选择查询来源／环境",
+  "environments": "此插件宿主上的其他 Codex CLI 配置账号。一个来源直接显示；多个来源由用户选择，无需重载。不能填写其他机器的路径。",
+  "environment.name": "查询来源的唯一名称。",
+  "environment.home": "此宿主上的 Codex 配置目录，使用绝对路径或 ~/；不包含凭据。",
+  "environment.cli": "可选 CLI 路径；留空时使用 codexQuota.cliPath。"
 }
