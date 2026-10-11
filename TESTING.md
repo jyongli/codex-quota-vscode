@@ -12,6 +12,8 @@
 
 - [Windows／Linux CI 第 49 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38118030640)：通过（2 分 9 秒）。两端均通过单元、实际打包入口、官方 npm CLI、真实 VS Code 宿主和 VSIX 图标／介绍／身份校验。
 
+- [发布提交 CI 第 50 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38118176489)和 [GitHub Release 第 26 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38118176323)：通过。实际下载公开 VSIX 与 SHA256 文件，字节／校验值和冻结测试包一致；图标与清单再次验证通过。
+
 已核查官方 IDE 安装包 `openai.chatgpt@26.51007.21434` 的程序路径、同宿主配置目录和 WSL 分支，并阅读公开认证／配置文档。IDE 来源的账号隔离测试使用协议测试程序与两个独立目录；不等于实际官方 IDE 订阅登录验收。只能读取当前宿主的共享配置账号，不能保证等于官方 IDE 内存会话或其他内部 SSH 连接账号。其他宿主与 Windows 内 WSL 来源不以本机账号代替。同一账号额度共享。临时公开接口核查工作流已删除；既有公网 IP、实际 SSH／WSL／容器及 macOS／ARM64 实测限制仍适用。
 
 ## 0.1.13
