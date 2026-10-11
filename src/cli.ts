@@ -12,6 +12,7 @@ export interface QueryOptions {
   cliPath: string;
   codexHome: string;
   timeoutMs: number;
+  accountOnly?: boolean;
 }
 
 export interface QueryDiagnostic {
@@ -267,7 +268,7 @@ export async function queryCodex(options: QueryOptions, signal?: AbortSignal): P
     stage = 'phaseAccount';
     const account = parseAccount(await client.request('account/read', { refreshToken: false }));
     stage = 'phaseQuota';
-    const quota = account.type === 'chatgpt' ? parseQuota(await client.request('account/rateLimits/read')) : undefined;
+    const quota = !options.accountOnly && account.type === 'chatgpt' ? parseQuota(await client.request('account/rateLimits/read')) : undefined;
     // Reject mixed-account snapshots if the account changes during the quota request.
     if (quota) {
       stage = 'phaseConfirm';

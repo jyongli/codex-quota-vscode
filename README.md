@@ -7,7 +7,7 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 - 有明确的 5 小时窗口：`Codex [本地] 5 小时 75% · 周 60%`。
 - 没有 5 小时窗口：`Codex [本地] 周 60%`。
 - 同一个 VSIX 可安装在本地或 SSH／WSL／容器端，读取插件实际运行机器的 CLI、账号和额度。
-- 查询机器由安装位置决定；只有一个账号来源时直接显示，多个来源时由用户选择；语言与左右位置在设置中配置。
+- 查询机器由安装位置决定；自动检测实际配置目录与登录账号，相同来源合并，只有一个时直接显示，多个时首次弹出选择；语言与左右位置在设置中配置。
 - 支持跟随 VS Code、中文与 English，切换语言立即生效，无须重新查询或重载窗口。
 - 悬浮提示显示执行宿主的内网 IP 与公网出口 IP、账号邮箱与计划、剩余额度、重置时间、查询时间和当前刷新时间间隔。
 - 账号来源、CLI 路径与 Codex 配置目录通过“查看账号与额度来源”菜单查看。
@@ -17,17 +17,17 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 
 要求桌面 VS Code 1.95+。插件优先使用所在机器已有的官方 [Codex CLI](https://github.com/openai/codex)（建议 0.116.0+）；默认 `codex` 命令缺失时自动安装。自动安装需要该机器的 npm 和网络。
 
-从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.14**，只需一个安装包：
+从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.15**，只需一个安装包：
 
-- [Codex Quota 安装包 codex-quota-monitor-ujyong-0.1.14.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.14/codex-quota-monitor-ujyong-0.1.14.vsix)
-- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.14/codex-quota-monitor-ujyong-0.1.14.vsix.sha256)
+- [Codex Quota 安装包 codex-quota-monitor-ujyong-0.1.15.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.15/codex-quota-monitor-ujyong-0.1.15.vsix)
+- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.15/codex-quota-monitor-ujyong-0.1.15.vsix.sha256)
 
 本地窗口在“本地”安装；连接 SSH／WSL／容器后，在对应远程分组安装 **同一个 Codex Quota 插件、同一个 VSIX**。两端使用同一扩展 ID `ujyong.codex-quota-monitor-ujyong`，各自读取所在机器上已登录的 Codex CLI。
 
 从 VS Code 扩展视图的“…”菜单选择 **Install from VSIX / 从 VSIX 安装**。本地安装也可执行：
 
 ```sh
-code --install-extension codex-quota-monitor-ujyong-0.1.14.vsix
+code --install-extension codex-quota-monitor-ujyong-0.1.15.vsix
 ```
 
 本版 Marketplace 发布者为 **`ujyong`**，扩展名称为 **`codex-quota-monitor-ujyong`**；原名称 `codex-quota-vscode` 在商店已被占用。如果安装过旧 ID **`jyongli.codex-quota-vscode`** 或 **`ujyong.codex-quota-vscode`**，请先在本地与对应远程端卸载旧插件，再安装新版；VS Code 将不同 ID 视为独立扩展，不能原地更新，同时启用会产生重复状态栏。现有 `codexQuota.*` 设置及 Codex CLI 登录继续使用，无须重新登录。
@@ -46,9 +46,11 @@ VS Code 商店的发布配置与操作见 [Marketplace 发布说明](MARKETPLACE
 
 ## 查询来源与多个环境
 
-只有一个可查询来源时直接显示；有多个来源且没有保存过选择时，状态栏显示“选择查询来源／环境”，点击后由用户选择，不先查询任意一个账号。之后可从状态栏菜单切换，取消选择保留原状态。切换取消旧查询并清除旧数字，无需重载或修改设置。只保存来源 ID；偏好存储只读不影响当次切换。
+先通过官方 `initialize`／`account/read` 检测各来源的实际 `.codex` 目录与登录账号，不读取认证文件，也不在选择前查询额度。只有**实际目录和账号同时一致**才合并；账号比较使用接口返回的邮箱与计划，两端均未登录时也可合并。继承 `CODEX_HOME`、显式路径和符号链接统一解析实际目录，Windows 路径比较忽略大小写。账号无法确认或 API Key／Bedrock 无法区分身份时保留独立来源。
 
-默认来源是当前宿主的 **CLI**。同一宿主安装了官方 `openai.chatgpt` 且能找到其原生／自定义 CLI 时，增加 **VS Code Codex（配置账号）**：使用官方插件的 CLI 和该宿主的 `CODEX_HOME`／`~/.codex` 查询共享配置账号，不套用为 CLI 单独指定的 `codexQuota.codexHome`。选择后通过官方协议读取登录账号和剩余额度；“查看账号与额度来源”显示实际路径。
+合并后只有一个来源时直接显示；仍有多个来源时保留上次有效选择，没有保存过选择则首次自动弹出“选择查询来源／环境”，显示检测到的实际目录和账号。取消后保持原状态，自动刷新不重复弹窗；可从状态栏菜单再次选择。切换取消旧查询并清除旧数字，无需重载或修改设置。旧 CLI／IDE 来源选择在合并后仍兼容，只保存来源 ID；偏好存储只读不影响当次切换。
+
+默认来源是当前宿主的 **CLI**。同一宿主安装了官方 `openai.chatgpt` 且能找到其原生／自定义 CLI 时，检测 **VS Code Codex（配置账号）**：使用官方插件的 CLI 和该宿主的 `CODEX_HOME`／`~/.codex` 查询共享配置账号，不套用为 CLI 单独指定的 `codexQuota.codexHome`。与 CLI 的实际目录及账号一致时自动合并为 **CLI / VS Code Codex**；有差异时提供独立选择，选择后读取剩余额度。“查看账号与额度来源”显示实际路径与合并依据。
 
 **同一账号的 CLI 与 IDE 额度共享**，分开来源不代表两个额度池。IDE 来源代表共享配置目录中的账号，无法保证等于官方插件内存中的会话账号或它内部另一个 SSH 连接的账号；目前没有确认可供其他扩展调用的独立账号／额度 API。
 

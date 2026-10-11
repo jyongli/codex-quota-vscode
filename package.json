@@ -3,7 +3,7 @@
   "displayName": "Codex Quota",
   "description": "%main.description%",
   "icon": "resources/icon.png",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "publisher": "ujyong",
   "license": "MIT",
   "repository": {

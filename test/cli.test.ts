@@ -36,6 +36,18 @@ test('未登录、API Key 与 Bedrock 不调用订阅额度接口', async () => 
   }
 });
 
+test('来源检测仅查询实际目录和账号，不调用额度接口，结束后台进程', async () => {
+  await withScenario({ error: -32000 }, async home => {
+    const snapshot = await queryCodex({ cliPath: fixtureCli, codexHome: home, timeoutMs: 3000, accountOnly: true });
+    assert.equal(snapshot.codexHome, home);
+    assert.deepEqual(snapshot.account, { type: 'chatgpt', email: 'fixture@example.test', planType: 'plus' });
+    assert.equal(snapshot.quota, undefined);
+    const trace = await readTrace(home);
+    assert.deepEqual(trace.slice(1).map(row => row.method), ['initialize', 'initialized', 'account/read']);
+    assert.throws(() => process.kill(trace[0].pid as number, 0), { code: 'ESRCH' });
+  });
+});
+
 test('额度读取期间账号变化会拒绝混合快照', async () => {
   await withScenario({ changeAccount: true }, async home => {
     await assert.rejects(queryCodex({ cliPath: fixtureCli, codexHome: home, timeoutMs: 3000 }), /账号发生变化/);

@@ -28,7 +28,7 @@ interface MockState {
   output: { lines: string[]; shown: number; disposed: boolean };
   errorAction?: string;
   choice?: { command?: string; label: string; id?: string };
-  picks: { label: string }[][];
+  picks: { label: string; detail?: string }[][];
   reloads: number;
   installs: unknown[];
   openedSettings?: unknown;
@@ -117,15 +117,23 @@ function fire(changed: string): void {
   for (const listener of state.listeners) listener({ affectsConfiguration: key => key === changed });
 }
 
+async function waitFor(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 5000;
+  while (!predicate() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+  assert.ok(predicate(), 'expected extension state did not arrive');
+}
+
 async function harness(scenario: unknown, options: {
   remoteName?: string; workspaceHost?: boolean; trusted?: boolean; legacyRemote?: boolean; workspacePosition?: string; legacyKinds?: boolean; language?: LanguageSetting; vscodeLanguage?: string; workspaceLanguage?: LanguageSetting; publicIp?: boolean;
   globalPreferences?: Record<string, unknown>; workspacePreferences?: Record<string, unknown>;
-  missingCli?: boolean; npmScenario?: unknown; environments?: unknown; ide?: { extensionKind: number; extensionUri: { fsPath: string } }; ideCli?: string;
+  missingCli?: boolean; npmScenario?: unknown; environments?: unknown; ide?: { extensionKind: number; extensionUri: { fsPath: string } }; ideCli?: string; sharedIde?: boolean;
 } = {}): Promise<{ api: QuotaApi; home: string; dispose(): Promise<void> }> {
   const home = await scenarioHome(scenario);
   ide = options.ide;
   const previousPath = process.env.PATH;
   const previousNpmFixture = process.env.CODEX_QUOTA_NPM_FIXTURE;
+  const previousCodexHome = process.env.CODEX_HOME;
+  if (options.sharedIde) process.env.CODEX_HOME = home;
   if (options.missingCli) {
     const installEnv = await npmFixture(home, options.npmScenario);
     process.env.PATH = installEnv.PATH;
@@ -161,6 +169,9 @@ async function harness(scenario: unknown, options: {
     for (const subscription of subscriptions) subscription.dispose();
     if (previousPath === undefined) delete process.env.PATH; else process.env.PATH = previousPath;
     if (previousNpmFixture === undefined) delete process.env.CODEX_QUOTA_NPM_FIXTURE; else process.env.CODEX_QUOTA_NPM_FIXTURE = previousNpmFixture;
+    if (options.sharedIde) {
+      if (previousCodexHome === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = previousCodexHome;
+    }
     await cleanup(home);
   } };
 }
@@ -235,7 +246,7 @@ test('扩展激活、命令注册、状态栏、账号来源与即时左右切�
   assert.ok(state.output.disposed);
 });
 
-test('一个来源直接显示；多个来源先选择，取消不查询，切换保留各自账号且无需重载', async () => {
+test('不同来源自动弹出一次选择；取消不查询额度，切换保留各自账号且无需重载', async () => {
   const other = await scenarioHome({ account: { type: 'chatgpt', email: 'other-host-profile@example.test', planType: 'pro' },
     quota: { rateLimits: { secondary: { usedPercent: 12, windowDurationMins: 10080 } } } });
   const h = await harness({}, { environments: [{ name: 'Other account', codexHome: other }] });
@@ -244,7 +255,15 @@ test('一个来源直接显示；多个来源先选择，取消不查询，切�
     assert.equal(h.api.getState().sources.length, 2);
     assert.match(h.api.getState().text, /选择查询来源/);
     assert.equal(h.api.getState().snapshot, undefined);
-    await assert.rejects(readTrace(h.home), { code: 'ENOENT' });
+    await waitFor(() => state.picks.length === 1);
+    assert.equal(state.picks[0].length, 2);
+    assert.ok(state.picks[0][0].detail?.includes(await realpath(h.home)));
+    assert.match(state.picks[0][0].detail!, /fixture@example.test/);
+    assert.ok(!(await readTrace(h.home)).some(row => row.method === 'account/rateLimits/read'));
+    assert.ok(!(await readTrace(other)).some(row => row.method === 'account/rateLimits/read'));
+    await h.api.refresh();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(state.picks.length, 1, 'cancelled automatic picker must not reopen on polling');
     await mock.commands.executeCommand('codexQuota.menu');
     assert.equal(state.picks.at(-1)?.length, 2);
     assert.equal(h.api.getState().snapshot, undefined);
@@ -276,7 +295,7 @@ test('来源选择恢复、只读偏好不阻止切换，取消旧查询后晚�
   const h = await harness({ delay: 800 }, { environments: [{ name: 'New', codexHome: other }], workspacePreferences: { selectedSource: 'cli' } });
   try {
     const old = h.api.refresh();
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await waitFor(() => h.api.getState().sources.length === 2);
     state.storageError = new Error('EACCES SENSITIVE_MOCK_TOKEN');
     state.choice = { id: 'environment:New', label: 'New' };
     await mock.commands.executeCommand('codexQuota.selectSource');
@@ -287,6 +306,72 @@ test('来源选择恢复、只读偏好不阻止切换，取消旧查询后晚�
     assert.doesNotMatch(state.output.lines.join('\n'), /SENSITIVE_MOCK_TOKEN/);
     assert.equal(state.reloads, 0);
   } finally { await h.dispose(); await cleanup(other); }
+});
+
+test('同宿主 CLI 与 IDE 的实际目录和账号一致时合并，自动显示且不弹出选择', async () => {
+  const h = await harness({}, { sharedIde: true,
+    ide: { extensionKind: 1, extensionUri: { fsPath: path.dirname(fixtureCli) } }, ideCli: fixtureCli,
+    workspacePreferences: { selectedSource: 'ide' } });
+  try {
+    state.settings.codexHome = '';
+    fire('codexQuota.codexHome');
+    await h.api.refresh();
+    assert.equal(h.api.getState().sources.length, 1);
+    assert.equal(h.api.getState().selectedSource, 'cli');
+    assert.equal(h.api.getState().snapshot?.codexHome, h.home);
+    assert.equal(h.api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(state.picks.length, 0);
+    await mock.commands.executeCommand('codexQuota.showAccount');
+    assert.match(state.messages.at(-1)!, /实际配置目录和 account\/read 登录账号一致/);
+    assert.equal(state.updates.length, 0);
+  } finally { await h.dispose(); }
+});
+
+test('相同目录但两端返回不同登录账号时不合并，选择 IDE 后显示其账号', async () => {
+  const peer = await scenarioHome({});
+  const ideCli = path.join(peer, 'different-account.cjs');
+  await writeFile(ideCli, (await readFile(fixtureCli, 'utf8')).replace('fixture@example.test', 'different@example.test'));
+  const h = await harness({}, { sharedIde: true,
+    ide: { extensionKind: 1, extensionUri: { fsPath: peer } }, ideCli });
+  try {
+    await h.api.refresh();
+    assert.equal(h.api.getState().sources.length, 2);
+    await waitFor(() => state.picks.length === 1);
+    assert.match(state.picks[0][0].detail!, /fixture@example.test/);
+    assert.match(state.picks[0][1].detail!, /different@example.test/);
+    state.choice = { id: 'ide', label: 'IDE' };
+    await mock.commands.executeCommand('codexQuota.selectSource');
+    assert.match(h.api.getState().tooltip, /different@example.test/);
+    assert.equal(h.api.getState().snapshot?.codexHome, h.home);
+  } finally { await h.dispose(); await cleanup(peer); }
+});
+
+test('自动与手动选择共用一个窗口，配置变化后忽略旧窗口的选择', async () => {
+  const other = await scenarioHome({});
+  const originalPick = mock.window.showQuickPick;
+  let finish!: (choice: MockState['choice']) => void;
+  const pending = new Promise<MockState['choice']>(resolve => { finish = resolve; });
+  mock.window.showQuickPick = async items => { state.picks.push(items); return pending; };
+  const h = await harness({}, { environments: [{ name: 'Other', codexHome: other }] });
+  try {
+    await h.api.refresh();
+    await waitFor(() => state.picks.length === 1);
+    const manual = mock.commands.executeCommand('codexQuota.selectSource');
+    assert.equal(state.picks.length, 1);
+    state.settings.environments = [];
+    fire('codexQuota.environments');
+    await h.api.refresh();
+    finish({ id: 'environment:Other', label: 'Other' });
+    await manual;
+    assert.equal(h.api.getState().selectedSource, 'cli');
+    assert.equal(state.workspacePreferences.selectedSource, undefined);
+    assert.equal(state.picks.length, 1);
+  } finally {
+    finish(undefined);
+    mock.window.showQuickPick = originalPick;
+    await h.dispose(); await cleanup(other);
+  }
 });
 
 test('IDE 来源使用官方插件同宿主的共享目录，不继承自定义 CLI 账号；其他宿主不冒充可用来源', async () => {

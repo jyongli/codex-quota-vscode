@@ -7,16 +7,16 @@ Codex Quota is a **Visual Studio Code extension** that displays the remaining qu
 - Both quota windows available: `Codex [Local] 5h 75% · Week 60%`.
 - Weekly window only: `Codex [Local] Week 60%`.
 - Install the same VSIX locally or remotely; query that machine’s CLI and signed-in account.
-- One source is shown automatically; choose between multiple sources. Configure status bar side and language in VS Code Settings.
+- Actual configuration directories and sign-ins are detected automatically; equivalent sources merge, one source displays directly, and distinct sources prompt for selection. Configure status bar side and language in VS Code Settings.
 - The tooltip shows the extension host’s network interface IP, public outbound IP, account, quota resets, last check and refresh interval.
 
 ## Installation
 
 Use desktop VS Code 1.95+. Existing official Codex CLI installations are reused. If the default `codex` command is missing, the extension automatically installs the official npm package on that host; this requires npm and network access. Codex CLI 0.116.0+ is recommended.
 
-Download version 0.1.14 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
+Download version 0.1.15 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
 
-- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.14/codex-quota-monitor-ujyong-0.1.14.vsix)
+- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.15/codex-quota-monitor-ujyong-0.1.15.vsix)
 
 Install using **Extensions → … → Install from VSIX**. In a local window install under **Local**. In an SSH / WSL / Dev Container / desktop Codespaces window install the **same extension, same VSIX** on that remote host using the remote Extensions group or **Install from VSIX**. A missing CLI is automatically installed on that machine; sign in there with ChatGPT.
 
@@ -30,9 +30,11 @@ Upgrading: the manual environment selector and `codexQuota.executionEnvironment`
 
 ## Sources and multiple environments
 
-One available source is displayed automatically. With multiple sources and no saved choice, the status bar asks you to choose; it does not query an arbitrary account. Click it to select, then switch through its menu. Cancelling preserves the current selection. Switching cancels the previous query and clears its numbers without reloading or editing settings. Only the source ID is stored; read-only preferences do not prevent the current switch.
+Official `initialize` / `account/read` first detect actual `.codex` directories and sign-ins, without reading credential files or querying quota before selection. Sources merge only when **both the actual directory and account match**. Account comparison uses the returned email and plan; matching signed-out states may also merge. Inherited `CODEX_HOME`, explicit paths and symlinks resolve to actual directories, with case-insensitive Windows path comparison. Unknown identities, API keys and Bedrock remain separate when identity cannot be confirmed.
 
-The default source is this host's **CLI**. When the official `openai.chatgpt` extension is installed in the same host and its native/custom CLI is accessible, **VS Code Codex (configuration account)** is also available. It queries the official extension's CLI against this host's `CODEX_HOME` or `~/.codex`, without borrowing a CLI-specific `codexQuota.codexHome`. The signed-in account and remaining quota are read through the official protocol after selection; **View account and quota source** identifies the actual paths.
+One resulting source displays automatically. Multiple distinct sources keep a valid saved choice, or automatically open **Choose quota source / environment** once with detected paths and accounts. Cancelling preserves the current state, and polling does not reopen the picker; its menu remains available for choosing later. Switching cancels the previous query and clears its numbers without reloading or editing settings. Saved CLI / IDE choices remain compatible after merging. Only the source ID is stored; read-only preferences do not prevent the current switch.
+
+The default source is this host's **CLI**. When the official `openai.chatgpt` extension is installed in the same host and its native/custom CLI is accessible, **VS Code Codex (configuration account)** is also detected. It queries the official extension's CLI against this host's `CODEX_HOME` or `~/.codex`, without borrowing a CLI-specific `codexQuota.codexHome`. A matching directory and account merge into **CLI / VS Code Codex**; distinct sources stay selectable and their quota is read after selection. **View account and quota source** identifies actual paths and why sources merged.
 
 **CLI and IDE share quota for the same account.** Separate sources are not independent quota pools. The IDE source represents the account in the shared configuration directory; it cannot guarantee the account of an in-memory IDE session or another internal SSH connection. No independently callable account/quota API for other extensions has been confirmed in the official extension.
 

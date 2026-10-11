@@ -5,7 +5,7 @@ import { accountText, quotaText, QuotaWindow } from './quota';
 import { errorMessage, Language, Message, MessageKey, resolveLanguage, t, text } from './i18n';
 import { getPublicIp } from './publicIp';
 import { ensureCli } from './cliInstall';
-import { discoverSources, QuerySource, selectedSource } from './sources';
+import { discoverSources, mergeEquivalentSources, QuerySource, selectedSource } from './sources';
 
 export interface ExtensionState {
   text: string;
@@ -60,6 +60,9 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private notificationCount = 0;
   private sources: QuerySource[] = [];
   private selection?: string;
+  private readonly promptedSources = new Set<string>();
+  private promptTimer?: ReturnType<typeof setTimeout>;
+  private sourcePicker?: Promise<void>;
   private readonly context: vscode.ExtensionContext;
 
   constructor(context: vscode.ExtensionContext) {
@@ -152,6 +155,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private currentSource(): QuerySource | undefined { return selectedSource(this.sources, this.selection); }
 
   private sourceLabel(source: QuerySource): string {
+    if (source.includesIde) return this.t('mergedLabel');
     return source.kind === 'ide' ? this.t('ideLabel') : source.name ? `CLI / ${singleLine(source.name)}` : 'CLI';
   }
 
@@ -168,6 +172,8 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 
   private invalidate(): void {
     this.generation++;
+    if (this.promptTimer) clearTimeout(this.promptTimer);
+    this.promptTimer = undefined;
     this.abort?.abort();
     this.running = undefined;
     this.loading = false;
@@ -180,6 +186,24 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     if (this.interval) clearInterval(this.interval);
     this.interval = setInterval(() => { void this.refresh(); }, this.refreshSeconds() * 1000);
     void this.refresh();
+  }
+
+  private async resolveSourceCli(source: QuerySource, generation: number, signal: AbortSignal): Promise<string> {
+    const cliPath = await ensureCli({
+      cliPath: source.cliPath, storagePath: this.storagePath,
+      autoInstall: source.kind === 'cli' && this.config().get('autoInstallCli', true),
+      onInstalling: () => {
+        if (this.disposed || generation !== this.generation) return;
+        this.installing = true;
+        this.output.appendLine(`[${new Date().toISOString()}] ${this.t('installingCli')}`);
+        this.render();
+      }
+    }, signal);
+    if (signal.aborted || generation !== this.generation || this.disposed) return cliPath;
+    if (this.installing) this.output.appendLine(`[${new Date().toISOString()}] ${this.t('cliInstalled')}`);
+    this.installing = false;
+    this.render();
+    return cliPath;
   }
 
   refresh(): Promise<void> {
@@ -195,27 +219,31 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const includePublicIp = this.config().get('showPublicIp', true);
     const job = (async () => {
       try {
-        const sources = await this.findSources();
+        const candidates = await this.findSources();
+        if (abort.signal.aborted) return;
+        // Probe accounts before offering choices. No quota requests or credential
+        // file reads are needed to detect duplicate configuration accounts.
+        const sources = await mergeEquivalentSources(candidates, async candidate => {
+          if (abort.signal.aborted) throw new Error('Cancelled source discovery');
+          try {
+            const cliPath = await this.resolveSourceCli(candidate, generation, abort.signal);
+            return await queryCodex({ cliPath, codexHome: candidate.codexHome,
+              timeoutMs: Math.min(timeout * 1000, 5000), accountOnly: true }, abort.signal);
+          } catch (error) {
+            if (abort.signal.aborted) throw error;
+            // Unknown identities remain separate; the selected source's full
+            // query supplies the normal actionable error if it also fails.
+            return undefined;
+          }
+        });
         if (this.disposed || generation !== this.generation) return;
         const previousSource = this.currentSource()?.id;
         this.sources = sources;
         const source = this.currentSource();
         if (previousSource !== source?.id) { this.snapshot = undefined; this.error = undefined; this.render(); }
         if (!source) { this.snapshot = undefined; this.error = undefined; return; }
-        const cliPath = await ensureCli({
-          cliPath: source.cliPath, storagePath: this.storagePath,
-          autoInstall: source.kind === 'cli' && this.config().get('autoInstallCli', true),
-          onInstalling: () => {
-            if (this.disposed || generation !== this.generation) return;
-            this.installing = true;
-            this.output.appendLine(`[${new Date().toISOString()}] ${this.t('installingCli')}`);
-            this.render();
-          }
-        }, abort.signal);
+        const cliPath = await this.resolveSourceCli(source, generation, abort.signal);
         if (abort.signal.aborted) return;
-        if (this.installing) this.output.appendLine(`[${new Date().toISOString()}] ${this.t('cliInstalled')}`);
-        this.installing = false;
-        this.render();
         const [quota, publicIp] = await Promise.all([queryCodex({
           cliPath,
           codexHome: source.codexHome, timeoutMs: timeout * 1000
@@ -242,6 +270,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
           this.installing = false;
           this.running = undefined;
           this.render();
+          this.scheduleSourcePrompt();
         }
       }
     })();
@@ -317,7 +346,8 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     const lines = [String(this.bar.tooltip ?? '')];
     if (this.snapshot) {
       const host = this.t(this.target) + (this.target === 'remote' ? ` / ${singleLine(vscode.env.remoteName ?? '')}` : '');
-      lines.push(this.t('queryHost', { value: host }), this.t(this.currentSource()?.kind === 'ide' ? 'ideSource' : 'source'), this.t('cli', { value: singleLine(this.snapshot.cliPath) }),
+      const source = this.currentSource();
+      lines.push(this.t('queryHost', { value: host }), this.t(source?.includesIde ? 'mergedSource' : source?.kind === 'ide' ? 'ideSource' : 'source'), this.t('cli', { value: singleLine(this.snapshot.cliPath) }),
         this.t('home', { value: singleLine(this.snapshot.codexHome) }), this.t('credentials'));
     }
     lines.push(this.t('sharedQuota'), this.t('sourceLimits'));
@@ -338,15 +368,44 @@ class QuotaController implements vscode.Disposable, QuotaApi {
     else await vscode.commands.executeCommand(choice.command);
   }
 
-  private async selectSource(): Promise<void> {
+  private sourceFingerprint(): string {
+    return JSON.stringify(this.sources.map(({ id, resolvedHome, account }) => [id, resolvedHome, account]));
+  }
+
+  private scheduleSourcePrompt(): void {
+    if (this.disposed || this.pendingReason() || this.sources.length <= 1 || this.currentSource() || this.sourcePicker || this.promptTimer) return;
+    const fingerprint = this.sourceFingerprint();
+    if (this.promptedSources.has(fingerprint)) return;
+    const generation = this.generation;
+    this.promptTimer = setTimeout(() => {
+      this.promptTimer = undefined;
+      if (this.disposed || generation !== this.generation || fingerprint !== this.sourceFingerprint() || this.currentSource()) return;
+      void this.selectSource().catch(() => this.output.appendLine(this.t('settingsWriteFailed')));
+    }, 0);
+  }
+
+  private selectSource(): Promise<void> {
+    if (this.sourcePicker) return this.sourcePicker;
+    const job = this.pickSource();
+    this.sourcePicker = job;
+    return job.finally(() => {
+      if (this.sourcePicker === job) this.sourcePicker = undefined;
+      this.scheduleSourcePrompt();
+    });
+  }
+
+  private async pickSource(): Promise<void> {
     if (!this.sources.length) await this.refresh();
-    if (this.sources.length <= 1) return;
+    if (this.disposed || this.sources.length <= 1) return;
+    const generation = this.generation;
+    this.promptedSources.add(this.sourceFingerprint());
     const choice = await vscode.window.showQuickPick(this.sources.map(source => ({
       label: `${this.sourceLabel(source)} [${this.t(this.target)}]`,
       description: source.id === this.currentSource()?.id ? this.t('currentSource') : undefined,
-      detail: this.t('home', { value: singleLine(source.codexHome || this.t('inheritedHome')) }), id: source.id
+      detail: this.t('home', { value: singleLine(source.resolvedHome || source.codexHome || this.t('inheritedHome')) }) + ' · '
+        + (source.account ? this.t('account', { value: singleLine(accountText(source.account, this.language())) }) : this.t('unconfirmedAccount')), id: source.id
     })), { title: this.t('chooseSource'), placeHolder: this.t('sourceChoiceHint') });
-    if (!choice || choice.id === this.currentSource()?.id || !this.sources.some(source => source.id === choice.id)) return;
+    if (this.disposed || generation !== this.generation || !choice || choice.id === this.currentSource()?.id || !this.sources.some(source => source.id === choice.id)) return;
     this.invalidate();
     this.selection = choice.id;
     // A read-only settings file does not block selection. Persist only the

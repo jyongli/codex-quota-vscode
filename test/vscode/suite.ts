@@ -108,6 +108,13 @@ export async function run(): Promise<void> {
     assert.equal(api.getState().alignment, 'right');
     assert.equal(api.getState().snapshot, positionSnapshot);
     console.log('PASS: native status bar position settings apply immediately and preserve quota');
+    await config.update('environments', [{ name: 'Same account', codexHome: home + path.sep }], vscode.ConfigurationTarget.Global);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await api.refresh();
+    assert.equal(api.getState().sources.length, 1);
+    assert.equal(api.getState().selectedSource, 'cli');
+    assert.equal(api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
+    console.log('PASS: identical actual configuration directory and account merge automatically');
     const secondHome = path.join(home, 'second-account');
     await mkdir(secondHome);
     await writeFile(path.join(secondHome, 'scenario.json'), JSON.stringify({ account: { type: 'chatgpt', email: 'second-account@example.test', planType: 'pro' } }));
@@ -117,11 +124,16 @@ export async function run(): Promise<void> {
     assert.equal(api.getState().sources.length, 2);
     assert.equal(api.getState().snapshot, undefined);
     assert.match(api.getState().text, /选择查询来源/);
-    const sourceCommand = vscode.commands.executeCommand('codexQuota.selectSource');
+    // The first distinct-source picker opens automatically, without invoking
+    // the command or clicking the status bar.
     await new Promise(resolve => setTimeout(resolve, 250));
     await vscode.commands.executeCommand('workbench.action.quickOpenSelectNext');
     await vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem');
-    await sourceCommand;
+    const deadline = Date.now() + 10000;
+    while (api.getState().selectedSource !== 'environment:Second account' && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    await api.refresh();
     assert.equal(api.getState().selectedSource, 'environment:Second account');
     assert.equal(api.getState().snapshot?.codexHome, secondHome);
     assert.match(api.getState().tooltip, /second-account@example.test/);
@@ -131,7 +143,7 @@ export async function run(): Promise<void> {
     assert.equal(api.getState().sources.length, 1);
     assert.equal(api.getState().selectedSource, 'cli');
     assert.equal(api.getState().text, 'Codex [本地] 5 小时 75% · 周 60%');
-    console.log('PASS: multiple sources require an actual picker choice; singleton restores its account without reloading');
+    console.log('PASS: distinct sources open an actual picker automatically; singleton restores its account without reloading');
     await writeFile(path.join(home, 'scenario.json'), JSON.stringify({ quota: { rateLimits: { secondary: { usedPercent: 10, windowDurationMins: 10080 } } } }));
     await vscode.commands.executeCommand('codexQuota.refresh');
     assert.equal(api.getState().text, 'Codex [本地] 周 90%');
