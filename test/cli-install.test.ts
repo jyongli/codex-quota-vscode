@@ -50,7 +50,8 @@ test('首次后台安装官方包，两个调用合并；复用缓存并可读�
     assert.ok(trace[0].args.includes('@openai/codex@latest'));
     for (const arg of ['--ignore-scripts', '--include=optional', '--registry=https://registry.npmjs.org']) assert.ok(trace[0].args.includes(arg));
     assert.equal(trace[0].electron, '1');
-    assert.ok(trace[0].cwd.startsWith(options.storagePath));
+    assert.equal(await realpath(path.dirname(trace[0].cwd)), await realpath(options.storagePath));
+    assert.ok(path.basename(trace[0].cwd).startsWith('codex-cli-install-'));
     assert.equal((await queryCodex({ cliPath: entry, codexHome: home, timeoutMs: 5000 })).account.type, 'signedOut');
     await assert.rejects(access(path.join(options.storagePath, 'codex-cli-install.lock')));
   } finally { await cleanup(home); }
