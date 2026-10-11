@@ -18,7 +18,7 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import urllib.request, zipfile, io, json, re
+          import urllib.request, urllib.error, zipfile, io, json, re
           def notice(title, value):
               text = str(value).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print('::notice title=' + title + '::' + text)
@@ -34,12 +34,23 @@ jobs:
                       sample = plain[max(0, match.start()-140):match.start()+300]
                       if sample not in samples:
                           samples.append(sample)
-                  notice('Official docs ' + slug, '\n'.join(samples[-18:]))
+                  notice('Official docs ' + slug, '\n'.join(samples[:18]))
               except Exception as error:
                   notice('Official docs unavailable', slug + ': ' + type(error).__name__)
-          url = 'https://marketplace.visualstudio.com/_apis/public/gallery/publishers/openai/vsextensions/chatgpt/latest/vspackage?targetPlatform=linux-x64'
-          req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-          archive = zipfile.ZipFile(io.BytesIO(urllib.request.urlopen(req, timeout=45).read()))
+          archive = None
+          for suffix in ['?targetPlatform=linux-x64', '?targetPlatform=win32-x64', '']:
+              url = 'https://marketplace.visualstudio.com/_apis/public/gallery/publishers/openai/vsextensions/chatgpt/latest/vspackage' + suffix
+              try:
+                  req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/octet-stream'})
+                  response = urllib.request.urlopen(req, timeout=45)
+                  body = response.read()
+                  archive = zipfile.ZipFile(io.BytesIO(body))
+                  notice('Package download', suffix + ' size=' + str(len(body)))
+                  break
+              except Exception as error:
+                  notice('Package download unavailable', suffix + ': ' + type(error).__name__ + ' ' + str(error)[:300])
+          if archive is None:
+              raise SystemExit(0)
           manifest = json.loads(archive.read('extension/package.json'))
           props = manifest.get('contributes', {}).get('configuration', {})
           props = props if isinstance(props, list) else [props]
