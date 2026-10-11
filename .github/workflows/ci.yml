@@ -46,6 +46,11 @@ jobs:
       - if: runner.os == 'Windows'
         run: npm run test:vscode
       - run: npm run package
+      - name: Verify Marketplace publisher and VSIX identity
+        shell: bash
+        run: |
+          package_version="$(node -p "require('./package.json').version")"
+          node scripts/verify-marketplace.mjs "artifacts/codex-quota-vscode-$package_version.vsix" "$package_version"
       - uses: actions/upload-artifact@v4
         with:
           name: codex-quota-vsix-${{ matrix.os }}

@@ -17,18 +17,20 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 
 要求桌面 VS Code 1.95+。插件优先使用所在机器已有的官方 [Codex CLI](https://github.com/openai/codex)（建议 0.116.0+）；默认 `codex` 命令缺失时自动安装。自动安装需要该机器的 npm 和网络。
 
-从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.11**，只需一个安装包：
+从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.12**，只需一个安装包：
 
-- [Codex Quota 安装包 codex-quota-vscode-0.1.11.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.11/codex-quota-vscode-0.1.11.vsix)
-- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.11/codex-quota-vscode-0.1.11.vsix.sha256)
+- [Codex Quota 安装包 codex-quota-vscode-0.1.12.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.12/codex-quota-vscode-0.1.12.vsix)
+- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.12/codex-quota-vscode-0.1.12.vsix.sha256)
 
-本地窗口在“本地”安装；连接 SSH／WSL／容器后，在对应远程分组安装 **同一个 Codex Quota 插件、同一个 VSIX**。两端使用同一扩展 ID `jyongli.codex-quota-vscode`，各自读取所在机器上已登录的 Codex CLI。
+本地窗口在“本地”安装；连接 SSH／WSL／容器后，在对应远程分组安装 **同一个 Codex Quota 插件、同一个 VSIX**。两端使用同一扩展 ID `ujyong.codex-quota-vscode`，各自读取所在机器上已登录的 Codex CLI。
 
 从 VS Code 扩展视图的“…”菜单选择 **Install from VSIX / 从 VSIX 安装**。本地安装也可执行：
 
 ```sh
-code --install-extension codex-quota-vscode-0.1.11.vsix
+code --install-extension codex-quota-vscode-0.1.12.vsix
 ```
+
+本版 Marketplace 发布者为 **`ujyong`**。如果安装过旧 ID **`jyongli.codex-quota-vscode`**，请先在本地与对应远程端卸载旧插件，再安装新版；VS Code 将这两个 ID 视为不同扩展，不能原地更新，同时启用会产生重复状态栏。现有 `codexQuota.*` 设置及 Codex CLI 登录继续使用，无须重新登录。
 
 VS Code 商店的发布配置与操作见 [Marketplace 发布说明](MARKETPLACE.md)。发布流程使用已通过双平台检查的 GitHub Release 安装包。
 

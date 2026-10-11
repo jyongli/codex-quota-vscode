@@ -50,6 +50,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   private loading = false;
   private installing = false;
   private readonly storagePath: string;
+  private readonly extensionId: string;
   private readonly target: ExecutionTarget;
   private readonly output: vscode.OutputChannel;
   private notifiedError?: string;
@@ -57,6 +58,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
 
   constructor(context: vscode.ExtensionContext) {
     this.storagePath = context.globalStorageUri.fsPath;
+    this.extensionId = context.extension.id;
     this.output = vscode.window.createOutputChannel('Codex Quota');
     this.target = activeTarget(context.extension.extensionKind === vscode.ExtensionKind.Workspace, vscode.env.remoteName);
     this.createBar();
@@ -287,7 +289,7 @@ class QuotaController implements vscode.Disposable, QuotaApi {
       { label: `$(settings-gear) ${this.t('menuSettings')}`, command: 'settings' }
     ], { title: 'Codex Quota' });
     if (!choice) return;
-    if (choice.command === 'settings') await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:jyongli.codex-quota-vscode');
+    if (choice.command === 'settings') await vscode.commands.executeCommand('workbench.action.openSettings', `@ext:${this.extensionId}`);
     else await vscode.commands.executeCommand(choice.command);
   }
 

@@ -7,10 +7,14 @@ const { readVSIXPackage, readZip } = require('@vscode/vsce/out/zip');
 const semver = require('semver');
 const [archive, version] = process.argv.slice(2);
 assert.ok(archive && semver.valid(version) && !semver.prerelease(version), 'Specify an archive and stable version');
-const { manifest } = await readVSIXPackage(archive);
-assert.equal(manifest.publisher, 'jyongli');
+const { manifest, xmlManifest } = await readVSIXPackage(archive);
+assert.equal(manifest.publisher, 'ujyong');
 assert.equal(manifest.name, 'codex-quota-vscode');
 assert.equal(manifest.version, version);
+const identity = xmlManifest.PackageManifest.Metadata[0].Identity[0].$;
+assert.equal(identity.Publisher, manifest.publisher, 'VSIX publisher must match package.json');
+assert.equal(identity.Id, manifest.name);
+assert.equal(identity.Version, manifest.version);
 assert.deepEqual(manifest.extensionKind, ['workspace']);
 assert.ok(!manifest.enableProposedApi && !manifest.enabledApiProposals?.length, 'Proposed APIs are not allowed');
 const files = await readZip(archive, () => true);
@@ -23,4 +27,4 @@ assert.ok(![...files.keys()].some(name => name.includes('/bundled/') || name.inc
 for (const key of ['cliPath', 'codexHome']) {
   assert.equal(manifest.contributes.configuration.properties[`codexQuota.${key}`].scope, 'machine');
 }
-console.log(`PASS: Marketplace package jyongli.codex-quota-vscode@${version}, one extension for local and remote installation`);
+console.log(`PASS: Marketplace package ${manifest.publisher}.${manifest.name}@${version}, one extension for local and remote installation`);

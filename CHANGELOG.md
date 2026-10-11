@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.12
+
+- Marketplace 发布者更正为实际账号下的 `ujyong`，修复上传 VSIX 时发布者 ID 不匹配；扩展 ID 为 `ujyong.codex-quota-vscode`。
+- “打开设置”使用当前扩展 ID 定位，避免发布者更改后设置页面为空；更新双语安装说明、商店地址和发布校验。
+- 旧 `jyongli.codex-quota-vscode` 与新扩展 ID 相互独立，安装新版前请在本地／远程端卸载旧 ID 的插件，避免重复状态栏。现有 `codexQuota.*` 设置与 Codex CLI 登录继续使用。
+
 ## 0.1.11
 
 - 检测插件实际宿主的 Codex CLI；默认命令缺失时自动在该宿主的插件存储中安装官方 npm 包，已有 CLI／已安装副本优先复用。
