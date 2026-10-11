@@ -3,10 +3,6 @@ name: Publish GitHub Release
 on:
   push:
     tags: ['v*']
-    branches: [main]
-    paths:
-      - 'releases/**'
-      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 permissions:
