@@ -9,6 +9,7 @@
 - 真实 Linux VS Code `1.95.3`：12 组断言通过，包括新扩展 ID 的发现、清单名称／发布者、菜单打开设置、额度、双语／位置和后台 CLI 安装。
 - 最终 VSIX：11 个文件、39,799 字节；包名 `codex-quota-monitor-ujyong`、发布者 `ujyong`、版本 `0.1.13` 在 JSON／XML 清单中一致。ZIP 与安装后入口字节检查通过；只安装最终 VSIX 后，真实 VS Code 的 12 组断言再次通过。
 - [Windows／Linux CI 第 41 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38110569682)：通过。两端均通过单元、打包入口、官方 CLI、实际 VS Code 宿主和包身份检查。Linux 的官方 `vsce search` 查询成功，未发现其他发布者使用完整名称 `codex-quota-monitor-ujyong`。
+- [标签提交 CI 第 42 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38110704063)与 [GitHub Release 第 25 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38110704496)：通过。公开下载的 VSIX／校验文件与冻结测试包一致，SHA256 为 `414b2a4ad41c1b8327dfbea5f2839e2a4823fc353bdb1c73cfb41678c409b7fe`。发布脚本从目标标签清单读取包名，实际定位新的文件名并验证成功。
 
 当前云环境直接访问商店 API 返回代理 403，公开查询已由 GitHub Linux CI 补充。查询不等于名称预留，最终以上传校验为准；GitHub Release 和 VSIX 验证也不等于 Marketplace 上架成功。查询网络故障只记录未确认，不使构建因此失败。旧扩展 ID 需卸载，设置与 Codex CLI 登录仍可使用。运行协议和宿主行为不变，其他实机验证限制沿用前版。
 
