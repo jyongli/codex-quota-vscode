@@ -14,9 +14,9 @@ Codex Quota is a **Visual Studio Code extension** that displays the remaining qu
 
 Use desktop VS Code 1.95+. Existing official Codex CLI installations are reused. If the default `codex` command is missing, the extension automatically installs the official npm package on that host; this requires npm and network access. Codex CLI 0.116.0+ is recommended.
 
-Download version 0.1.16 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
+Download version 0.1.17 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
 
-- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.16/codex-quota-monitor-ujyong-0.1.16.vsix)
+- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.17/codex-quota-monitor-ujyong-0.1.17.vsix)
 
 Install using **Extensions → … → Install from VSIX**. In a local window install under **Local**. In an SSH / WSL / Dev Container / desktop Codespaces window install the **same extension, same VSIX** on that remote host using the remote Extensions group or **Install from VSIX**. A missing CLI is automatically installed on that machine; sign in there with ChatGPT.
 
