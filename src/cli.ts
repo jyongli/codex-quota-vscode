@@ -1,5 +1,5 @@
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
-import { access, readFile, realpath } from 'node:fs/promises';
+import { access, readFile, realpath, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
@@ -37,6 +37,10 @@ interface CliCommand {
   executable: string;
   args: string[];
   packageRoot?: string;
+}
+
+class CliResolutionError extends LocalizedError {
+  constructor(translation: Message, readonly launcher: string) { super(translation); }
 }
 
 function failureHint(stderr: string, code: number | null): Message {
@@ -105,6 +109,60 @@ async function windowsCodexExecutable(entry: string, arch: string): Promise<stri
   throw fail('nativeMissing');
 }
 
+function shimTarget(value: string, launcher: string, env: NodeJS.ProcessEnv): string | undefined {
+  const directory = path.dirname(launcher) + path.sep;
+  let target = value.replace(/%(?:~dp0|dp0%)/gi, () => directory)
+    .replace(/\$(?:\{basedir\}|basedir|PSScriptRoot)(?=[\\/]|$)/gi, () => path.dirname(launcher));
+  // Only expand standard installation directories. Never evaluate shell code,
+  // variable assignments or an arbitrary environment variable in a launcher.
+  target = target.replace(/%(APPDATA|LOCALAPPDATA|USERPROFILE|PROGRAMFILES(?:\(X86\))?|SYSTEMDRIVE)%/gi, (reference, name: string) => {
+    const key = Object.keys(env).find(key => key.toLowerCase() === name.toLowerCase());
+    return key && env[key] ? env[key]! : reference;
+  });
+  if (/[%$`\r\n]/.test(target)) return undefined;
+  target = path.normalize(target.replace(/[\\/]/g, path.sep));
+  return path.isAbsolute(target) ? target : undefined;
+}
+
+async function windowsShimCommand(launcher: string, env: NodeJS.ProcessEnv, arch: string): Promise<CliCommand> {
+  const targets: string[] = [];
+  try {
+    if ((await stat(launcher)).size <= 32768) {
+      const data = await readFile(launcher);
+      const content = data.subarray(0, 2).equals(Buffer.from([255, 254])) ? data.subarray(2).toString('utf16le') : data.toString('utf8');
+      // npm, pnpm and Yarn shims quote the official package entry. Resolve that
+      // entry to the native executable instead of invoking its Node wrapper.
+      for (const match of content.matchAll(/["']([^"'\r\n]*[\\/]@openai[\\/]codex[\\/]bin[\\/]codex\.js)["']/gi)) {
+        const target = shimTarget(match[1], launcher, env);
+        if (target) targets.push(target);
+      }
+      // A direct native launcher must forward arguments without injecting any.
+      for (const match of content.matchAll(/^\s*@?(?:call\s+)?(?:&\s*)?["']([^"'\r\n]+)["']\s+(?:%\*|[$@]args)\s*$/gmi)) {
+        const target = shimTarget(match[1], launcher, env);
+        if (target && path.basename(target).toLowerCase() === 'codex.exe') targets.push(target);
+      }
+    }
+  } catch { /* The adjacent standard npm layout may still be available. */ }
+  targets.push(path.join(path.dirname(launcher), 'node_modules', '@openai', 'codex', 'bin', 'codex.js'));
+  let failure: LocalizedError | undefined;
+  for (const target of new Set(targets)) {
+    let resolved: string;
+    try {
+      if (!(await stat(target)).isFile()) continue;
+      resolved = await realpath(target);
+    } catch { continue; }
+    if (path.basename(resolved).toLowerCase() === 'codex.exe') return { executable: resolved, args: [] };
+    try {
+      const native = await windowsCodexExecutable(resolved, arch);
+      if (native) return { executable: native, args: [], packageRoot: path.dirname(path.dirname(resolved)) };
+    } catch (error) {
+      if (error instanceof LocalizedError) failure ??= error;
+      else throw error;
+    }
+  }
+  throw failure ?? fail('noShell');
+}
+
 export async function resolveCli(command: string, env: NodeJS.ProcessEnv = process.env, platform = process.platform, arch = process.arch): Promise<CliCommand> {
   const expanded = expandHome(command.trim());
   if (!expanded) throw fail('cliRequired');
@@ -115,32 +173,33 @@ export async function resolveCli(command: string, env: NodeJS.ProcessEnv = proce
       ? [] // Relative workspace paths must not execute code from the current project.
       : (env.PATH ?? env.Path ?? '').split(windows ? ';' : path.delimiter).filter(dir => path.isAbsolute(dir))
         .flatMap(dir => windows && !path.extname(expanded)
-          ? ['.exe', '.cmd', '.bat'].map(ext => path.join(dir, expanded + ext))
+          ? ['.exe', '.cmd', '.bat', '.ps1'].map(ext => path.join(dir, expanded + ext))
           : [path.join(dir, expanded)]);
   if (!candidates.length) throw fail(expanded.includes('/') || expanded.includes('\\') ? 'absoluteCli' : 'cliMissing');
-  let found: string | undefined;
+  let failure: CliResolutionError | undefined;
   for (const candidate of candidates) {
+    let found: string;
     try {
       await access(candidate, windows || /\.[cm]?js$/i.test(candidate) ? constants.F_OK : constants.X_OK);
+      if (!(await stat(candidate)).isFile()) continue;
       found = await realpath(candidate);
-      break;
-    } catch { /* Try the next PATH entry. */ }
-  }
-  if (!found) throw fail('cliMissing');
-  if (windows && /\.(cmd|bat)$/i.test(found)) {
-    const entry = path.join(path.dirname(found), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
-    try { await access(entry); } catch {
-      throw fail('noShell');
+    } catch { continue; }
+    try {
+      if (windows && /\.(cmd|bat|ps1)$/i.test(found)) return await windowsShimCommand(found, env, arch);
+      if (windows) {
+        const native = await windowsCodexExecutable(found, arch);
+        if (native) return { executable: native, args: [], packageRoot: path.dirname(path.dirname(found)) };
+      }
+      return /\.[cm]?js$/i.test(found)
+        ? { executable: process.execPath, args: [found] }
+        : { executable: found, args: [] };
+    } catch (error) {
+      if (error instanceof LocalizedError) failure ??= new CliResolutionError(error.translation, found);
+      else throw error;
+      // A stale or unsupported launcher must not hide another usable PATH entry.
     }
-    found = await realpath(entry);
   }
-  if (windows) {
-    const native = await windowsCodexExecutable(found, arch);
-    if (native) return { executable: native, args: [], packageRoot: path.dirname(path.dirname(found)) };
-  }
-  return /\.[cm]?js$/i.test(found)
-    ? { executable: process.execPath, args: [found] }
-    : { executable: found, args: [] };
+  throw failure ?? fail('cliMissing');
 }
 
 class RpcClient {
@@ -283,7 +342,8 @@ export async function queryCodex(options: QueryOptions, signal?: AbortSignal): P
     };
   } catch (error) {
     throw new CodexQueryError(errorMessage(error), {
-      phase: t('zh-CN', stage), phaseKey: stage, cliPath: command ? command.args[0] ?? command.executable : undefined, codexHome,
+      phase: t('zh-CN', stage), phaseKey: stage, cliPath: command ? command.args[0] ?? command.executable
+        : error instanceof CliResolutionError ? error.launcher : undefined, codexHome,
       ...(error instanceof ProcessExitError ? { exitCode: error.exitCode, signal: error.signal } : {})
     });
   } finally {

@@ -189,18 +189,23 @@ class QuotaController implements vscode.Disposable, QuotaApi {
   }
 
   private async resolveSourceCli(source: QuerySource, generation: number, signal: AbortSignal): Promise<string> {
+    let installed = false;
     const cliPath = await ensureCli({
       cliPath: source.cliPath, storagePath: this.storagePath,
       autoInstall: source.kind === 'cli' && this.config().get('autoInstallCli', true),
       onInstalling: () => {
         if (this.disposed || generation !== this.generation) return;
+        installed = true;
         this.installing = true;
         this.output.appendLine(`[${new Date().toISOString()}] ${this.t('installingCli')}`);
         this.render();
       }
-    }, signal);
+    }, signal).catch(error => {
+      if (!this.disposed && generation === this.generation) { this.installing = false; this.render(); }
+      throw error;
+    });
     if (signal.aborted || generation !== this.generation || this.disposed) return cliPath;
-    if (this.installing) this.output.appendLine(`[${new Date().toISOString()}] ${this.t('cliInstalled')}`);
+    if (installed) this.output.appendLine(`[${new Date().toISOString()}] ${this.t('cliInstalled')}`);
     this.installing = false;
     this.render();
     return cliPath;

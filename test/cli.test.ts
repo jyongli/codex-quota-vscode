@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { mkdir, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { CodexQueryError, queryCodex, resolveCli } from '../src/cli';
 import { cleanup, fixtureCli, readTrace, scenarioHome } from './helpers';
 import { quotaText } from '../src/quota';
@@ -150,6 +150,93 @@ test('Windows 直接配置 codex.exe 和非官方 JS 入口仍可使用', async 
     await writeFile(native, '');
     assert.deepEqual(await resolveCli(native, {}, 'win32'), { executable: await realpath(native), args: [] });
     assert.deepEqual(await resolveCli(fixtureCli, {}, 'win32'), { executable: process.execPath, args: [fixtureCli] });
+  });
+});
+
+async function officialWindowsPackage(root: string): Promise<{ entry: string; native: string; packageRoot: string }> {
+  const packageRoot = path.join(root, 'node_modules', '@openai', 'codex');
+  const entry = path.join(packageRoot, 'bin', 'codex.js');
+  const native = path.join(packageRoot, 'vendor', 'x86_64-pc-windows-msvc', 'bin', 'codex.exe');
+  await mkdir(path.dirname(entry), { recursive: true });
+  await mkdir(path.dirname(native), { recursive: true });
+  await writeFile(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@openai/codex' }));
+  await writeFile(entry, 'throw new Error("JS wrapper must not run")');
+  await writeFile(native, '');
+  return { entry, native, packageRoot };
+}
+
+test('Windows pnpm／Yarn／独立前缀与 PowerShell 包装器解析实际官方入口，不依赖相邻 npm 目录', async () => {
+  await withScenario({}, async home => {
+    const install = await officialWindowsPackage(path.join(home, 'Global install 中文 with spaces'));
+    for (const [filename, invocation] of [
+      ['codex.cmd', '"%dp0%\\..\\Global install 中文 with spaces\\node_modules\\@openai\\codex\\bin\\codex.js" %*'],
+      ['codex.bat', '"%~dp0..\\Global install 中文 with spaces\\node_modules\\@openai\\codex\\bin\\codex.js" %*'],
+      ['codex.ps1', '& "$basedir/../Global install 中文 with spaces/node_modules/@openai/codex/bin/codex.js" $args']
+    ]) {
+      const directory = path.join(home, filename + ' shims');
+      await mkdir(directory);
+      const launcher = path.join(directory, filename);
+      await writeFile(launcher, invocation + '\r\n');
+      const expected = { executable: await realpath(install.native), args: [], packageRoot: await realpath(install.packageRoot) };
+      assert.deepEqual(await resolveCli(launcher, {}, 'win32', 'x64'), expected);
+      assert.deepEqual(await resolveCli('codex', { PATH: directory }, 'win32', 'x64'), expected);
+    }
+  });
+});
+
+test('Windows 原生包装器支持绝对路径、常用安装目录变量及 UTF-16 PowerShell，保持参数数组启动', async () => {
+  await withScenario({}, async home => {
+    const directory = path.join(home, 'Native CLI 中文 with spaces');
+    await mkdir(directory);
+    const native = path.join(directory, 'codex.exe');
+    await writeFile(native, '');
+    const launcher = path.join(home, 'codex.cmd');
+    for (const invocation of [`@"${native}" %*`, '@"%LOCALAPPDATA%\\Native CLI 中文 with spaces\\codex.exe" %*',
+      '@"%~dp0Native CLI 中文 with spaces\\codex.exe" %*']) {
+      await writeFile(launcher, invocation + '\r\n');
+      assert.deepEqual(await resolveCli(launcher, { LocalAppData: home }, 'win32'), { executable: await realpath(native), args: [] });
+    }
+    const powershell = path.join(home, 'codex.ps1');
+    await writeFile(powershell, Buffer.concat([Buffer.from([255, 254]), Buffer.from('& "$PSScriptRoot/Native CLI 中文 with spaces/codex.exe" @args\r\n', 'utf16le')]));
+    assert.deepEqual(await resolveCli(powershell, {}, 'win32'), { executable: await realpath(native), args: [] });
+  });
+});
+
+test('Windows 不受支持或残缺的 PATH 包装器不会遮住后续可用 CLI；显式路径保留错误', async () => {
+  await withScenario({}, async home => {
+    const invalid = path.join(home, 'Invalid shim');
+    const valid = path.join(home, 'Valid shim');
+    await mkdir(invalid); await mkdir(valid);
+    const launcher = path.join(invalid, 'codex.cmd');
+    await writeFile(launcher, 'exit 99');
+    const native = path.join(valid, 'codex.exe');
+    await writeFile(native, '');
+    const env = { PATH: invalid + ';' + valid };
+    assert.deepEqual(await resolveCli('codex', env, 'win32'), { executable: await realpath(native), args: [] });
+    await assert.rejects(resolveCli(launcher, env, 'win32'), /无法解析此 CLI 包装脚本/);
+    const incomplete = await officialWindowsPackage(invalid);
+    await writeFile(launcher, `"${incomplete.entry}" %*`);
+    await rm(incomplete.native);
+    assert.deepEqual(await resolveCli('codex', env, 'win32'), { executable: await realpath(native), args: [] });
+    await assert.rejects(resolveCli(launcher, env, 'win32'), /缺少 Windows 原生程序/);
+  });
+});
+
+test('未知包装器、注入额外参数、未展开变量和相对项目目标不执行', async () => {
+  await withScenario({}, async home => {
+    const native = path.join(home, 'codex.exe');
+    await writeFile(native, '');
+    const launcher = path.join(home, 'codex.cmd');
+    for (const content of ['codex %*', `"${native}" --different-account %*`, `"${native}" %* & echo SENSITIVE_MOCK_TOKEN`,
+      '".\\codex.exe" %*', '"%UNKNOWN_TOKEN%\\codex.exe" %*',
+      '"$(Get-Content auth.json)\\@openai\\codex\\bin\\codex.js" %*']) {
+      await writeFile(launcher, content);
+      await assert.rejects(resolveCli(launcher, {}, 'win32'), reason => {
+        assert.match(String(reason), /无法解析此 CLI 包装脚本/);
+        assert.doesNotMatch(String(reason), /SENSITIVE_MOCK_TOKEN|UNKNOWN_TOKEN/);
+        return true;
+      });
+    }
   });
 });
 

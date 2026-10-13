@@ -57,6 +57,25 @@ test('首次后台安装官方包，两个调用合并；复用缓存并可读�
   } finally { await cleanup(home); }
 });
 
+test('Windows 默认未知包装器使用隔离官方 CLI，禁用自动安装保留原错误，自定义路径不替换', { skip: process.platform !== 'win32' }, async () => {
+  const home = await scenarioHome({ account: null });
+  try {
+    const env = await npmFixture(home);
+    const launcher = path.join(env.PATH!, 'codex.cmd');
+    await writeFile(launcher, 'exit 99');
+    const options = { cliPath: 'codex', storagePath: path.join(home, 'storage'), env, autoInstall: true };
+    await assert.rejects(ensureCli({ ...options, autoInstall: false }, signal()), /无法解析此 CLI 包装脚本/);
+    await assert.rejects(ensureCli({ ...options, cliPath: launcher }, signal()), /无法解析此 CLI 包装脚本/);
+    await assert.rejects(access(path.join(home, 'npm-trace.jsonl')));
+    const entry = await ensureCli(options, signal());
+    assert.equal(await ensureCli({ ...options, autoInstall: false }, signal()), entry);
+    assert.equal((await queryCodex({ cliPath: entry, codexHome: home, timeoutMs: 5000 })).account.type, 'signedOut');
+    assert.equal(await readFile(launcher, 'utf8'), 'exit 99');
+    const trace = (await readFile(path.join(home, 'npm-trace.jsonl'), 'utf8')).trim().split('\n');
+    assert.equal(trace.length, 1);
+  } finally { await cleanup(home); }
+});
+
 test('npm 失败分类且隐藏原始内容；残缺安装不进入缓存，修复后可重试', async () => {
   const home = await scenarioHome({});
   try {

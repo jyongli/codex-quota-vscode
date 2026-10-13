@@ -14,9 +14,9 @@ Codex Quota is a **Visual Studio Code extension** that displays the remaining qu
 
 Use desktop VS Code 1.95+. Existing official Codex CLI installations are reused. If the default `codex` command is missing, the extension automatically installs the official npm package on that host; this requires npm and network access. Codex CLI 0.116.0+ is recommended.
 
-Download version 0.1.15 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
+Download version 0.1.16 from [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases):
 
-- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.15/codex-quota-monitor-ujyong-0.1.15.vsix)
+- [Codex Quota VSIX](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.16/codex-quota-monitor-ujyong-0.1.16.vsix)
 
 Install using **Extensions → … → Install from VSIX**. In a local window install under **Local**. In an SSH / WSL / Dev Container / desktop Codespaces window install the **same extension, same VSIX** on that remote host using the remote Extensions group or **Install from VSIX**. A missing CLI is automatically installed on that machine; sign in there with ChatGPT.
 
@@ -55,9 +55,9 @@ Discovery covers accessible sources on the current host. It does not scan other 
 
 ## Automatic CLI installation
 
-The extension checks the CLI setting and PATH in its actual host. Existing CLI installations take priority, followed by a cached managed installation. If the default `codex` command is missing, it installs `@openai/codex@latest` from `https://registry.npmjs.org` into VS Code’s extension global storage on that machine. Invalid custom commands or paths keep their errors and are never replaced.
+The extension checks the CLI setting and PATH in its actual host, continuing past unusable launchers. Existing usable CLI installations take priority, followed by a cached managed installation. If the default `codex` command is missing or its shell launcher cannot be resolved, it installs `@openai/codex@latest` from `https://registry.npmjs.org` into VS Code’s extension global storage on that machine. This isolated copy uses the same configuration directory and account, without executing the original launcher or replacing that installation. Invalid custom commands or paths keep their errors and are never replaced.
 
-The npm JavaScript entry runs in the background with hidden Windows processes, without executing npm.cmd through a shell. Installation does not require administrator access or change PATH or a global CLI. Scripts are disabled and official optional platform packages are included; package identity, entry and native binary are checked before use. Concurrent refreshes and windows share an installation lock; partial installations are cleaned up. There is no window reload.
+The npm JavaScript entry runs in the background with hidden Windows processes, without executing npm.cmd through a shell. Common Codex `.cmd` / `.bat` / `.ps1` launchers resolve to their actual native target, including separate npm prefixes, pnpm / Yarn global directories and direct native argument forwarding. Standard installation-directory variables and UTF-16 PowerShell files are supported; shell contents and injected arguments are not executed. Failed explicit launchers include their actual path in diagnostics. Installation does not require administrator access or change PATH or a global CLI. Scripts are disabled and official optional platform packages are included; package identity, entry and native binary are checked before use. Concurrent refreshes and windows share an installation lock; partial installations are cleaned up. There is no window reload.
 
 The status bar shows **Installing Codex CLI**. Installation has a separate 180-second timeout and reports missing npm, network/proxy/certificate failures, permissions and incomplete packages. Refresh to retry. Disposal or relevant setting changes cancel installation. If npm is absent, install Node.js and npm on that host and restart VS Code. `codexQuota.autoInstallCli: false` disables downloads while allowing an existing managed installation to be reused.
 

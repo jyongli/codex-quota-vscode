@@ -181,6 +181,22 @@ export async function run(): Promise<void> {
       await api.refresh();
       assert.match(api.getState().text, /未登录/);
       console.log('PASS: real VS Code extension host launches the official npm Codex CLI and reads an isolated unsigned-in account');
+      if (process.platform === 'win32') {
+        const launcher = path.join(home, 'codex.cmd');
+        const marker = path.join(home, 'shell-ran.txt');
+        await writeFile(launcher, '@echo SCRIPT_MUST_NOT_RUN > "%~dp0shell-ran.txt"\r\n'
+          + `@"${process.env.CODEX_QUOTA_NATIVE_CLI}" %*\r\n`);
+        await config.update('cliPath', launcher, vscode.ConfigurationTarget.Global);
+        await config.update('environments', [{ name: 'Same native account', cliPath: process.env.CODEX_QUOTA_NATIVE_CLI, codexHome: nativeHome }], vscode.ConfigurationTarget.Global);
+        await api.refresh();
+        assert.equal(api.getState().sources.length, 1);
+        assert.match(api.getState().text, /未登录/);
+        assert.match(api.getState().snapshot?.cliPath ?? '', /codex\.exe$/i);
+        assert.equal(api.getState().snapshot?.codexHome, nativeHome);
+        await assert.rejects(readFile(marker));
+        await config.update('environments', [], vscode.ConfigurationTarget.Global);
+        console.log('PASS: Windows host resolves a nonadjacent official CMD entry directly to native CLI; same configuration accounts merge without running shell content');
+      }
     }
     const previousPath = process.env.PATH;
     const previousFixture = process.env.CODEX_QUOTA_NPM_FIXTURE;

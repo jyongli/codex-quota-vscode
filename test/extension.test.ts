@@ -215,6 +215,20 @@ test('自动安装失败显示具体类别和双语提示，手动刷新可恢�
   } finally { await h.dispose(); }
 });
 
+test('CLI 探测安装失败后 IDE 来源仍可查询，不错误显示 CLI 安装成功', async () => {
+  const h = await harness({ account: null }, { missingCli: true, npmScenario: { fail: 1, stderr: 'ENOTFOUND SENSITIVE_NPM_TOKEN' }, sharedIde: true,
+    ide: { extensionKind: 1, extensionUri: { fsPath: path.dirname(fixtureCli) } }, ideCli: fixtureCli,
+    workspacePreferences: { selectedSource: 'ide' } });
+  try {
+    await h.api.refresh();
+    assert.equal(h.api.getState().sources.length, 2);
+    assert.equal(h.api.getState().selectedSource, 'ide');
+    assert.match(h.api.getState().text, /未登录/);
+    assert.doesNotMatch(state.output.lines.join('\n'), /CLI 已安装|SENSITIVE_NPM_TOKEN/);
+    assert.equal(state.errors.length, 0);
+  } finally { await h.dispose(); }
+});
+
 test('扩展激活、命令注册、状态栏、账号来源与即时左右切换', async () => {
   const h = await harness({});
   try {

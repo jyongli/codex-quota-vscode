@@ -17,17 +17,17 @@ Codex Quota 是一个 **Visual Studio Code（VS Code）插件**，用于在 VS C
 
 要求桌面 VS Code 1.95+。插件优先使用所在机器已有的官方 [Codex CLI](https://github.com/openai/codex)（建议 0.116.0+）；默认 `codex` 命令缺失时自动安装。自动安装需要该机器的 npm 和网络。
 
-从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.15**，只需一个安装包：
+从 [GitHub Releases](https://github.com/jyongli/codex-quota-vscode/releases) 下载 **0.1.16**，只需一个安装包：
 
-- [Codex Quota 安装包 codex-quota-monitor-ujyong-0.1.15.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.15/codex-quota-monitor-ujyong-0.1.15.vsix)
-- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.15/codex-quota-monitor-ujyong-0.1.15.vsix.sha256)
+- [Codex Quota 安装包 codex-quota-monitor-ujyong-0.1.16.vsix](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.16/codex-quota-monitor-ujyong-0.1.16.vsix)
+- [安装包 SHA256](https://github.com/jyongli/codex-quota-vscode/releases/download/v0.1.16/codex-quota-monitor-ujyong-0.1.16.vsix.sha256)
 
 本地窗口在“本地”安装；连接 SSH／WSL／容器后，在对应远程分组安装 **同一个 Codex Quota 插件、同一个 VSIX**。两端使用同一扩展 ID `ujyong.codex-quota-monitor-ujyong`，各自读取所在机器上已登录的 Codex CLI。
 
 从 VS Code 扩展视图的“…”菜单选择 **Install from VSIX / 从 VSIX 安装**。本地安装也可执行：
 
 ```sh
-code --install-extension codex-quota-monitor-ujyong-0.1.15.vsix
+code --install-extension codex-quota-monitor-ujyong-0.1.16.vsix
 ```
 
 本版 Marketplace 发布者为 **`ujyong`**，扩展名称为 **`codex-quota-monitor-ujyong`**；原名称 `codex-quota-vscode` 在商店已被占用。如果安装过旧 ID **`jyongli.codex-quota-vscode`** 或 **`ujyong.codex-quota-vscode`**，请先在本地与对应远程端卸载旧插件，再安装新版；VS Code 将不同 ID 视为独立扩展，不能原地更新，同时启用会产生重复状态栏。现有 `codexQuota.*` 设置及 Codex CLI 登录继续使用，无须重新登录。
@@ -69,7 +69,7 @@ code --install-extension codex-quota-monitor-ujyong-0.1.15.vsix
 
 ## Codex CLI 自动安装
 
-首次查询先检查当前插件宿主的 CLI 路径与 PATH。已有 CLI 直接复用；默认 `codex` 命令缺失时，先复用本机已自动安装的副本，没有副本才安装官方 `@openai/codex@latest`。本地安装只在本地检测／安装，远程安装只在远程机器检测／安装。自定义命令或绝对路径无效时提供路径错误，不自动替换。
+首次查询先检查当前插件宿主的 CLI 路径与 PATH。已有可用 CLI 直接复用，遇到失效包装器继续查找后续 PATH 项；默认 `codex` 命令缺失或其包装脚本无法解析时，先复用本机已自动安装的副本，没有副本才安装官方 `@openai/codex@latest`。备用副本沿用同一配置目录与账号，不执行原包装脚本、不覆盖原安装。本地安装只在本地检测／安装，远程安装只在远程机器检测／安装。自定义命令或绝对路径无效时提供路径错误，不自动替换。
 
 安装使用该机器 PATH 中 npm 的 JavaScript 入口，在后台通过官方 `https://registry.npmjs.org` 下载到 VS Code 的插件全局存储目录。插件不执行 npm.cmd shell 包装、不弹出命令行窗口、不需要管理员权限、不修改系统 PATH，也不覆盖全局 CLI。禁用安装脚本并明确包含官方平台可选依赖；完成后校验包身份、入口与原生程序，再启用。重复刷新／多个窗口共用安装锁；未完成的目录不作为成功安装复用。
 
@@ -145,7 +145,7 @@ API Key、Amazon Bedrock 和未登录状态会分别标明，不伪造 ChatGPT �
 
 请求超时、协议错误或网络失败后会清除旧数字并显示“查询失败”，同时主动弹出错误提示，可点击“查看诊断”。自动刷新遇到相同错误不会重复弹窗，手动刷新失败会再次提示。设置变化取消旧查询；插件卸载会终止辅助进程。查询只调用初始化、账号读取与额度读取，不创建会话，不发起模型生成。
 
-CLI 用参数数组在后台启动，`shell: false`、`windowsHide: true`，通过管道通信，不打开终端窗口；路径不是 shell 命令，不能填写管道或额外参数。Windows 支持直接配置 `codex.exe`，也支持官方 npm 的 `codex.cmd` 和 `bin/codex.js` 入口。插件会将官方 npm 入口解析为已安装的原生 `codex.exe` 后直接启动，避免 JS 包装器二次启动时弹出窗口；支持 x64／ARM64、平台依赖包与旧版内置 vendor 目录。缺少原生依赖时提示重新安装 CLI，不退回包装器。查询完成、取消或超时后结束辅助进程。
+CLI 用参数数组在后台启动，`shell: false`、`windowsHide: true`，通过管道通信，不打开终端窗口；路径不是 shell 命令，不能填写管道或额外参数。Windows 支持直接配置 `codex.exe`，也支持官方 npm 的 `codex.cmd` 和 `bin/codex.js` 入口。常见 `.cmd`／`.bat`／`.ps1` 包装器按其实际目标解析，支持独立 npm 前缀、pnpm／Yarn 全局目录，以及直接转发参数到原生 `codex.exe` 的入口；解析常用安装目录变量和 UTF-16 PowerShell 文件，不执行脚本内容或额外 shell 参数。官方 npm 入口解析为已安装的原生 `codex.exe` 后直接启动，避免 JS 包装器二次启动时弹出窗口；支持 x64／ARM64、平台依赖包与旧版内置 vendor 目录。缺少原生依赖时提示重新安装 CLI，不退回包装器。无法解析的显式路径会在诊断中指出命中的包装器。查询完成、取消或超时后结束辅助进程。
 
 默认查询超时为 60 秒，保留用户已有设置。超时提示会指出发生在 CLI 查找／初始化、账号读取、额度读取或账号确认阶段。若仍显示“读取额度超时”，先在**插件所在机器**的终端确认 `codex --version` 和 ChatGPT 登录可用，并检查 CLI 到官方服务的网络；可把 `codexQuota.requestTimeoutSeconds` 设置为 120 后手动重试。增加超时不会修复登录或网络故障。
 

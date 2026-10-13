@@ -99,7 +99,7 @@ const messages = {
   cliRequired: ['请设置 Codex CLI 路径。', 'Set the Codex CLI path.'],
   absoluteCli: ['CLI 路径必须为绝对路径或 PATH 中的命令名。', 'The CLI path must be absolute or a command name in PATH.'],
   cliMissing: ['找不到 Codex CLI。请在插件运行环境安装 Codex，并检查该环境的 CLI 路径设置。', 'Codex CLI was not found. Install Codex in the extension host and check its CLI path setting.'],
-  noShell: ['不执行 shell 包装脚本。请将 cliPath 设为 codex.exe 或官方 npm 包的 bin/codex.js。', 'Shell wrappers are not executed. Set the CLI path to codex.exe or the official npm package’s bin/codex.js.'],
+  noShell: ['无法解析此 CLI 包装脚本。请将 cliPath 设为 codex.exe 或官方 npm 包 bin/codex.js 的绝对路径。', 'This CLI launcher could not be resolved. Set the CLI path to an absolute codex.exe or official npm bin/codex.js path.'],
   spawnFailure: ['无法启动 Codex CLI（{code}）；请检查可执行文件和权限。', 'Could not start Codex CLI ({code}); check the executable and permissions.'],
   unknownSystemError: ['未知系统错误', 'Unknown system error'],
   cancelled: ['额度查询已取消。', 'Quota query cancelled.'], finished: ['查询已结束。', 'Query finished.'],

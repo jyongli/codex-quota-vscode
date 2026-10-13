@@ -99,18 +99,21 @@ async function installedEntry(directory: string, env: NodeJS.ProcessEnv): Promis
 export async function ensureCli(options: InstallOptions, signal: AbortSignal): Promise<string> {
   const env = options.env ?? process.env;
   if (signal.aborted) throw fail('cancelled');
+  let missing: LocalizedError;
   try {
     await resolveCli(options.cliPath, env);
     return options.cliPath;
   } catch (error) {
-    // Explicit paths and broken/unsupported installations retain their useful errors.
-    if (!(error instanceof LocalizedError) || error.translation.key !== 'cliMissing'
+    // An unrecognized default shell launcher can use an isolated official CLI
+    // while preserving the same home/account. Explicit paths are never replaced.
+    if (!(error instanceof LocalizedError) || !['cliMissing', 'noShell'].includes(error.translation.key)
       || options.cliPath.trim() !== 'codex') throw error;
+    missing = error;
   }
   const destination = path.join(options.storagePath, 'codex-cli');
   const existing = await installedEntry(destination, env);
   if (existing) return existing;
-  if (!options.autoInstall) throw fail('cliMissing');
+  if (!options.autoInstall) throw missing;
   options.onInstalling?.();
   const controller = new AbortController();
   const abort = () => controller.abort(fail('cancelled'));
