@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { QuotaApi } from '../../src/extension';
@@ -19,6 +19,18 @@ async function openSettingsFromMenu(): Promise<void> {
 }
 
 export async function run(): Promise<void> {
+  try { await runChecks(); } catch (error) {
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      const failure = (error instanceof Error ? error.stack ?? error.message : String(error)).slice(-12000)
+        .replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+      // These tests use isolated fixture/unsigned-in accounts, never real credentials.
+      console.error(`::error title=VS Code host test failure::${failure}`);
+    }
+    throw error;
+  }
+}
+
+async function runChecks(): Promise<void> {
   const home = await mkdtemp(path.join(tmpdir(), 'codex-quota-vscode-'));
   const config = vscode.workspace.getConfiguration('codexQuota');
   const previous = Object.fromEntries(['cliPath', 'codexHome', 'remoteCliPath', 'remoteCodexHome', 'environments', 'autoInstallCli', 'statusBarPosition', 'language', 'showPublicIp'].map(key => [key, config.inspect(key)?.globalValue]));
@@ -192,7 +204,7 @@ export async function run(): Promise<void> {
         assert.equal(api.getState().sources.length, 1);
         assert.match(api.getState().text, /未登录/);
         assert.match(api.getState().snapshot?.cliPath ?? '', /codex\.exe$/i);
-        assert.equal(api.getState().snapshot?.codexHome, nativeHome);
+        assert.equal(await realpath(api.getState().snapshot!.codexHome), await realpath(nativeHome));
         await assert.rejects(readFile(marker));
         await config.update('environments', [], vscode.ConfigurationTarget.Global);
         console.log('PASS: Windows host resolves a nonadjacent official CMD entry directly to native CLI; same configuration accounts merge without running shell content');
