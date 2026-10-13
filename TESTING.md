@@ -7,6 +7,9 @@
 - 原图 1254×1254、1,331,060 字节。调整为 256×256 后为 55,803 字节，再调用用户指定的 `https://tinify.cn/` 压缩为 22,322 字节（约 21.8 KB），保留原有图案；新 PNG 已解码查看并通过尺寸／体积检查。
 - 当前云环境的网络代理拒绝直连 Tinify，因此通过仓库 GitHub Actions 调用该网站的公开匿名压缩端点，HTTP 200，记录输入／输出字节数：[Tinify 压缩结果](https://github.com/jyongli/codex-quota-vscode/actions/runs/38413149694)。只上传公开图标，无凭据或其他文件。
 - 打包前和最终 VSIX 使用同一图标校验。将旧版 0.1.16 安装包交给新版检查，准确拒绝其中 1,331,060 字节的图标；新图标及新 VSIX 均通过。
+- 最终小图标 VSIX：12 个文件、70,671 字节。图标提取／安装后字节与 Tinify 输出一致，包身份与 ZIP 校验通过。SHA256：`e6f00dc088ac1aa8c066fee70014eee420257ef04a10cb8c952840322b767850`。
+- 安装最终小图标 VSIX 后，真实 Linux VS Code `1.95.3` 的 14 组宿主断言通过。临时 Tinify 工作流及结果分支已清理。
+- [最终小图标 Windows／Linux CI 第 63 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38413802751)：通过（2 分 4 秒），覆盖单元、打包入口、官方 CLI、真实 VS Code 宿主及 VSIX 校验。
 
 只改变图标与版本元数据，保留 0.1.16 的 CLI 与账号来源行为。本次检查覆盖截图所示图标体积拒绝，不等于 Marketplace 实际上传验收。
 
