@@ -11,6 +11,7 @@
 - 最终 VSIX：12 个文件、1,161,822 字节，商店图标／简介／包身份、安装后入口与翻译字节检查通过，发布维护文档未包含在安装包内。SHA256：`d202d1975e462fca1318653672ee6cbdfdb20ee496d4c2ee331fe574cc480ecb`。
 
 - [Windows／Linux CI 第 57 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38363863775)：通过（1 分 55 秒）。Windows 78 项单元、25 项打包入口及 15 组真实 VS Code 检查通过；Linux 75 项单元通过、3 项按平台跳过，真实宿主 14 组通过。
+- [发布标签提交 CI 第 58 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38364385526)与 [GitHub Release 第 28 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38364386133)：通过。已实际下载公开 VSIX 与 SHA256 文件，字节与冻结测试包完全一致，包身份及图标再次验证通过。
 
 Windows 专用检查包含真实控制台可执行文件的 `GetConsoleWindow` 断言、包装器内容不执行、CLI／IDE 配置来源实际账号探测合并，以及默认未知包装器复用或安装备用 CLI；Windows VS Code 增加真实官方 npm CMD 入口与独立配置账号合并。首次 CI 的 Windows 失败发生在新增 VS Code 宿主步骤；修正新增断言的短路径／实际路径比较并补充公开失败诊断后通过。仍不读取实际订阅登录凭据，官方 IDE 内存账号与其他宿主的限制沿用前版。
 
