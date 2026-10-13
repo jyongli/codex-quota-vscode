@@ -10,6 +10,7 @@
 - 最终小图标 VSIX：12 个文件、70,671 字节。图标提取／安装后字节与 Tinify 输出一致，包身份与 ZIP 校验通过。SHA256：`e6f00dc088ac1aa8c066fee70014eee420257ef04a10cb8c952840322b767850`。
 - 安装最终小图标 VSIX 后，真实 Linux VS Code `1.95.3` 的 14 组宿主断言通过。临时 Tinify 工作流及结果分支已清理。
 - [最终小图标 Windows／Linux CI 第 63 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38413802751)：通过（2 分 4 秒），覆盖单元、打包入口、官方 CLI、真实 VS Code 宿主及 VSIX 校验。
+- [发布标签提交 CI 第 64 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38415007318)：通过（2 分 2 秒）。首次 [Release 第 29 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38415007235) 在 Windows 的新装官方 CLI 初始化步骤触及测试脚本固定的 20 秒期限；宿主 CI 同时通过。原生冒烟的期限现统一为插件默认的 60 秒，保留原有功能断言、超时终止及失败状态，并提前输出安装版本供诊断。冻结 VSIX 的运行代码与字节无需改变。
 
 只改变图标与版本元数据，保留 0.1.16 的 CLI 与账号来源行为。本次检查覆盖截图所示图标体积拒绝，不等于 Marketplace 实际上传验收。
 

@@ -5,6 +5,9 @@ import assert from 'node:assert/strict';
 import cli from '../out/src/cli.js';
 import installer from '../out/src/cliInstall.js';
 const testHome = await mkdtemp(path.join(tmpdir(), 'codex-quota-native-'));
+// Fresh native binaries get the extension's default startup budget, including
+// on slower Windows runners. A hung process still fails and is terminated.
+const timeoutMs = 60_000;
 try {
   const home = path.join(testHome, 'Codex home 中文 with spaces');
   const database = path.join(testHome, 'Configured database 中文');
@@ -23,12 +26,13 @@ try {
     env: { ...process.env, PATH: npmDirectory } };
   const managed = await installer.ensureCli(options, new AbortController().signal);
   assert.equal(await installer.ensureCli(options, new AbortController().signal), managed);
-  assert.equal((await cli.queryCodex({ cliPath: managed, codexHome: home, timeoutMs: 20_000 })).account.type, 'signedOut');
   const installedVersion = JSON.parse(await readFile(path.join(path.dirname(managed), '..', 'package.json'), 'utf8')).version;
+  console.log(`Checking newly installed @openai/codex@${installedVersion} with a ${timeoutMs / 1000}s startup budget`);
+  assert.equal((await cli.queryCodex({ cliPath: managed, codexHome: home, timeoutMs })).account.type, 'signedOut');
   console.log(`PASS: missing CLI automatically installs official @openai/codex@${installedVersion} from the registry, reuses storage, and reads an isolated account`);
   const snapshot = await cli.queryCodex({
     cliPath: process.argv[2] ?? 'codex', codexHome: home,
-    timeoutMs: 20_000
+    timeoutMs
   });
   assert.equal(snapshot.account.type, 'signedOut');
   assert.equal(snapshot.quota, undefined);
@@ -37,7 +41,7 @@ try {
   console.log('PASS: native Codex CLI initialize/account/read; unsigned-in state; spaces/Unicode; configured database directory (no credentials)');
   const blockedHome = path.join(testHome, 'home path is a file');
   await writeFile(blockedHome, 'not a directory');
-  await assert.rejects(cli.queryCodex({ cliPath: process.argv[2] ?? 'codex', codexHome: blockedHome, timeoutMs: 20_000 }), error => {
+  await assert.rejects(cli.queryCodex({ cliPath: process.argv[2] ?? 'codex', codexHome: blockedHome, timeoutMs }), error => {
     assert.ok(error instanceof cli.CodexQueryError);
     assert.equal(error.diagnostic.phase, '启动并初始化 CLI');
     assert.ok(typeof error.diagnostic.exitCode === 'number' && error.diagnostic.exitCode !== 0);
