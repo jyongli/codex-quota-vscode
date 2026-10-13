@@ -7,9 +7,12 @@
 - `npm test`：75 项通过，3 项 Windows 专用测试按平台跳过。新增非相邻 npm／pnpm／Yarn 目录、CMD／BAT／PowerShell 目标解析、UTF-16 与安装目录变量、失效 PATH 项跳过、未知包装器拒绝执行，以及 CLI 安装探测失败后 IDE 来源继续查询。
 - `npm run test:bundle`：25 项通过，加载实际打包入口，包含账号来源合并与安装失败状态恢复。
 - 官方 npm CLI `0.162.1`：真实 registry 自动安装与复用、隔离未登录账号读取、配置数据库目录和启动失败诊断通过。
-- 真实 Linux VS Code `1.95.3`：14 组断言通过，覆盖实际宿主、来源合并／选择、账号隔离、后台安装及已有 UI 设置。
+- 真实 Linux VS Code `1.95.3`：14 组断言通过，覆盖实际宿主、来源合并／选择、账号隔离、后台安装及已有 UI 设置。安装最终 VSIX 后，修正后的宿主测试再次通过。
+- 最终 VSIX：12 个文件、1,161,822 字节，商店图标／简介／包身份、安装后入口与翻译字节检查通过，发布维护文档未包含在安装包内。SHA256：`d202d1975e462fca1318653672ee6cbdfdb20ee496d4c2ee331fe574cc480ecb`。
 
-Windows 专用检查包含真实控制台可执行文件的 `GetConsoleWindow` 断言、包装器内容不执行、CLI／IDE 配置来源实际账号探测合并，以及默认未知包装器复用或安装备用 CLI；Windows VS Code 增加真实官方 npm CMD 入口与独立配置账号合并。Windows 实测结果由本次 CI 记录。仍不读取实际订阅登录凭据，官方 IDE 内存账号与其他宿主的限制沿用前版。
+- [Windows／Linux CI 第 57 次运行](https://github.com/jyongli/codex-quota-vscode/actions/runs/38363863775)：通过（1 分 55 秒）。Windows 78 项单元、25 项打包入口及 15 组真实 VS Code 检查通过；Linux 75 项单元通过、3 项按平台跳过，真实宿主 14 组通过。
+
+Windows 专用检查包含真实控制台可执行文件的 `GetConsoleWindow` 断言、包装器内容不执行、CLI／IDE 配置来源实际账号探测合并，以及默认未知包装器复用或安装备用 CLI；Windows VS Code 增加真实官方 npm CMD 入口与独立配置账号合并。首次 CI 的 Windows 失败发生在新增 VS Code 宿主步骤；修正新增断言的短路径／实际路径比较并补充公开失败诊断后通过。仍不读取实际订阅登录凭据，官方 IDE 内存账号与其他宿主的限制沿用前版。
 
 ## 0.1.15
 
